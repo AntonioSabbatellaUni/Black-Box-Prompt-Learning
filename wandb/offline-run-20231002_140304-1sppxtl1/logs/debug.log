@@ -1,0 +1,26 @@
+2023-10-02 14:03:04,303 INFO    MainThread:5694 [wandb_setup.py:_flush():76] Current SDK version is 0.15.11
+2023-10-02 14:03:04,303 INFO    MainThread:5694 [wandb_setup.py:_flush():76] Configure stats pid to 5694
+2023-10-02 14:03:04,303 INFO    MainThread:5694 [wandb_setup.py:_flush():76] Loading settings from /home/vscode/.config/wandb/settings
+2023-10-02 14:03:04,303 INFO    MainThread:5694 [wandb_setup.py:_flush():76] Loading settings from /workspaces/basic-python/Black-Box-Prompt-Learning/wandb/settings
+2023-10-02 14:03:04,303 INFO    MainThread:5694 [wandb_setup.py:_flush():76] Loading settings from environment variables: {}
+2023-10-02 14:03:04,303 INFO    MainThread:5694 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2023-10-02 14:03:04,303 INFO    MainThread:5694 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program_relpath': 'run_glue_discrete_LM.py', 'program_abspath': '/workspaces/basic-python/Black-Box-Prompt-Learning/run_glue_discrete_LM.py', 'program': '/workspaces/basic-python/Black-Box-Prompt-Learning/./run_glue_discrete_LM.py'}
+2023-10-02 14:03:04,303 INFO    MainThread:5694 [wandb_setup.py:_flush():76] Applying login settings: {'mode': 'offline'}
+2023-10-02 14:03:04,304 INFO    MainThread:5694 [wandb_init.py:_log_setup():528] Logging user logs to /workspaces/basic-python/Black-Box-Prompt-Learning/wandb/offline-run-20231002_140304-1sppxtl1/logs/debug.log
+2023-10-02 14:03:04,304 INFO    MainThread:5694 [wandb_init.py:_log_setup():529] Logging internal logs to /workspaces/basic-python/Black-Box-Prompt-Learning/wandb/offline-run-20231002_140304-1sppxtl1/logs/debug-internal.log
+2023-10-02 14:03:04,304 INFO    MainThread:5694 [wandb_init.py:init():568] calling init triggers
+2023-10-02 14:03:04,304 INFO    MainThread:5694 [wandb_init.py:init():575] wandb.init called with sweep_config: {}
+config: {'task_name': 'mrpc', 'file_name': None, 'low_resource': False, 'ce_loss': True, 'sample_size': 20, 'prompt_length': 10, 'prompt_learning_rate': 0.0001, 'prompt_search_space': 200, 'num_train_epochs': 30, 'ckpt_path': './ckpts', 'margin': 1, 'trial': False, 'use_wandb': True, 'cuda': 0, 'max_length': 450, 'pad_to_max_length': False, 'per_device_train_batch_size': 128, 'per_device_eval_batch_size': 16, 'model_name_or_path': 'roberta-large', 'use_slow_tokenizer': False, 'weight_decay': 0.1, 'max_train_steps': None, 'gradient_accumulation_steps': 1, 'lr_scheduler_type': <SchedulerType.LINEAR: 'linear'>, 'num_warmup_steps': 100, 'output_dir': None, 'seed': 42, 'k_shot': 16, 'use_ngram': True, 'api_limit': 8000, 'train_file': None, 'validation_file': None, 'test_file': None, 'unique_task_name': 'mrpc', 'experiment_id': 'mrpc100.00013042200True', 'group_name': 'RoBERTa_BDPL_mrpc'}
+2023-10-02 14:03:04,304 INFO    MainThread:5694 [wandb_init.py:init():618] starting backend
+2023-10-02 14:03:04,304 INFO    MainThread:5694 [wandb_init.py:init():622] setting up manager
+2023-10-02 14:03:04,305 INFO    MainThread:5694 [backend.py:_multiprocessing_setup():105] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2023-10-02 14:03:04,310 INFO    MainThread:5694 [wandb_init.py:init():628] backend started and connected
+2023-10-02 14:03:04,313 INFO    MainThread:5694 [wandb_init.py:init():720] updated telemetry
+2023-10-02 14:03:04,319 INFO    MainThread:5694 [wandb_init.py:init():753] communicating run to backend with 90.0 second timeout
+2023-10-02 14:03:04,325 INFO    MainThread:5694 [wandb_init.py:init():804] starting run threads in backend
+2023-10-02 14:03:04,400 INFO    MainThread:5694 [wandb_run.py:_console_start():2199] atexit reg
+2023-10-02 14:03:04,400 INFO    MainThread:5694 [wandb_run.py:_redirect():2054] redirect: wrap_raw
+2023-10-02 14:03:04,400 INFO    MainThread:5694 [wandb_run.py:_redirect():2119] Wrapping output streams.
+2023-10-02 14:03:04,400 INFO    MainThread:5694 [wandb_run.py:_redirect():2144] Redirects installed.
+2023-10-02 14:03:04,400 INFO    MainThread:5694 [wandb_init.py:init():845] run started, returning control to user process
+2023-10-02 14:03:13,855 WARNING MsgRouterThr:5694 [router.py:message_loop():77] message_loop has been closed

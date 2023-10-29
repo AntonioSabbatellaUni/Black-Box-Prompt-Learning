@@ -158,6 +158,23 @@ def parse_args():
     parser.add_argument("--api_limit", type=int, default=8000 , help="The limit of the API request")
     args = parser.parse_args()
 
+    # bypass for debugging
+    all_args_list_default = {'task_name': None, 'file_name': None, 'low_resource': False, 'ce_loss': True, 'sample_size': 20, 'prompt_length': 6, 'prompt_learning_rate': 5e-5, 'prompt_search_space': 20, 'num_train_epochs': 30, 'ckpt_path': './ckpts', 'margin': 1, 'trial': False, 'use_wandb': True, 'cuda': 0, 'max_length': 450, 'pad_to_max_length': False, 'per_device_train_batch_size': 128, 'per_device_eval_batch_size': 32, 'model_name_or_path': 'roberta-large', 'use_slow_tokenizer': False, 'weight_decay': 0.1, 'max_train_steps': None, 'gradient_accumulation_steps': 1, 'lr_scheduler_type': 'linear', 'num_warmup_steps': 100, 'output_dir': None, 'seed': 42, 'k_shot': -1, 'use_ngram': True, 'api_limit': 8000}
+
+    args_selected = {"task_name": "mrpc", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
+
+    args ={}
+    for arg in all_args_list_default.keys():
+        if arg not in args_selected.keys():
+            args[arg] = all_args_list_default[arg]
+        else:
+            args[arg] = args_selected[arg]
+
+    # args to object
+    args = argparse.Namespace(**args)
+
+
+
     args.train_file = './dataset/' + args.file_name + '/train.csv' if args.file_name else None
     args.validation_file = './dataset/' + args.file_name + '/dev.csv' if args.file_name else None
     args.test_file = './dataset/' + args.file_name + '/test.csv' if args.file_name else None
@@ -185,7 +202,9 @@ def pmi():
             for line in f:
                 result = result + (list(line.strip('\n').split(',')))
     elif args.task_name:
-        with open("./pmi/" + args.task_name.lower() + ".txt",'r') as f:
+        path =  "/workspaces/basic-python/Black-Box-Prompt-Learning/"
+        with open(path + "/pmi/" + args.task_name.lower() + ".txt",'r') as f:
+        # with open("./pmi/" + args.task_name.lower() + ".txt",'r') as f:
             for line in f:
                 result = result + (list(line.strip('\n').split(',')))
 
@@ -275,7 +294,7 @@ def main():
     # Some models have set the order of the labels to use, so let's make sure we do use it.
     label_to_id = None
     if args.task_name:
-        label_to_id = LABEL2ID_CONFIG[args.task_name]
+        label_to_id = LABEL2ID_CONFIG[args.task_name] # -> debugging label_to_id:{' no': 0, ' yes': 1}
     elif args.file_name:
         label_to_id = LABEL2ID_CONFIG[args.file_name]
 
@@ -294,12 +313,13 @@ def main():
         config=config,
     )
     
-    args.device = torch.device("cuda", args.cuda)
+    # args.device = torch.device("cuda", args.cuda)
+    args.device = torch.device("cuda", 0) if torch.cuda.is_available() else torch.device("cpu")
     model.to(args.device)
 
     if label_to_id is not None:
-        model.config.label2id = label_to_id
-        model.config.id2label = {id: label for label, id in config.label2id.items()}
+        model.config.label2id = label_to_id # -> debugging model.config.label2id:{' no': 0, ' yes': 1}
+        model.config.id2label = {id: label for label, id in config.label2id.items()} # -> debugging model.config.id2label:{0: ' no', 1: ' yes'}
 
     @counter
     def train_api_request(input_ids=None, attention_mask=None):
@@ -312,7 +332,7 @@ def main():
 
     # Preprocessing the datasets
     if args.task_name is not None:
-        sentence1_key, sentence2_key = task_to_keys[args.task_name]
+        sentence1_key, sentence2_key = task_to_keys[args.task_name] # -> debugging sentence1_key:'sentence1', sentence2_key:'sentence2'
     else:
         non_label_column_names = [name for name in raw_datasets["train"].column_names if name != "label"]
         if "sentence1" in non_label_column_names and "sentence2" in non_label_column_names:
@@ -323,7 +343,7 @@ def main():
             else:
                 sentence1_key, sentence2_key = non_label_column_names[0], None
 
-    padding = "max_length" if args.pad_to_max_length else False
+    padding = "max_length" if args.pad_to_max_length else False # -> debugging padding:False
 
     def preprocess_function(examples):
         # Tokenize the texts
@@ -417,9 +437,9 @@ def main():
         return result
 
     with accelerator.main_process_first():
-        if args.k_shot >= 0:
+        if args.k_shot >= 0: # k-shot learning value : 16
             # k-shot learning
-            raw_train_dataset_split = raw_datasets["train"].train_test_split(test_size=0.5)
+            raw_train_dataset_split = raw_datasets["train"].train_test_split(test_size=0.5) # raw_datasets = load_dataset("glue", args.task_name)
             raw_train_dataset = raw_train_dataset_split['train']
             raw_eval_dataset = raw_train_dataset_split['test']
             train_dataset = raw_train_dataset.map(
@@ -514,7 +534,7 @@ def main():
 
     # Get the metric function
     if args.task_name is not None:
-        metric = load_metric("glue", args.task_name, experiment_id=args.experiment_id)
+        metric = load_metric("glue", args.task_name, experiment_id=args.experiment_id) #
     elif args.file_name in DOMAIN_DATASET:
         metric = load_metric('f1', args.experiment_id)
     else:
@@ -567,7 +587,7 @@ def main():
                     for k in range(args.sample_size):
                         prompts_discrete_indices = prompts_dist.sample()
                         prompts_discrete_indices_list.append(prompts_discrete_indices)
-                        if args.use_ngram:
+                        if args.use_ngram: #
                             prompts_discrete_indices_ngram_list = []
                             indices_list = prompts_discrete_indices.int().tolist()
                             for idx in indices_list:
@@ -576,28 +596,28 @@ def main():
                             cur_input_ids = torch.cat([torch.zeros(bsz, 1, dtype=torch.long).to(args.device), prompts_discrete_ngram_indices.unsqueeze(0).repeat(bsz, 1).to(args.device), batch['input_ids'][:, 1:]], dim=1)
                         else: 
                             cur_input_ids = torch.cat([torch.zeros(bsz, 1, dtype=torch.long).to(args.device), prompts_discrete_indices.unsqueeze(0).repeat(bsz, 1).to(args.device), batch['input_ids'][:, 1:]], dim=1)
-
-                        cur_attention_mask = torch.cat([torch.ones(bsz, 1).to(args.device), torch.ones(bsz, prompt_length).to(args.device), batch["attention_mask"][:, 1:]],dim=1)
+                        # ********** attention mask **********
+                        cur_attention_mask = torch.cat([torch.ones(bsz, 1).to(args.device), torch.ones(bsz, prompt_length).to(args.device), batch["attention_mask"][:, 1:]],dim=1) # debugger : tensor([[  0, 285, 461,  ...,   1,   1,   1],        [  0, 285, 461,  ...,   1,   1,   1],        [  0, 285, 461,  ...,   1,   1,   1],        ...,        [  0, 285, 461,  ...,   1,   1,   1],        [  0, 285, 461,  ...,   1,   1,   1],        [  0, 285, 461,  ...,   1,   1,   1]])
                         mask_pos = np.where(np.array(cur_input_ids.cpu()) == tokenizer.mask_token_id) 
-                        mask_pos = torch.tensor(mask_pos[-1])
+                        mask_pos = torch.tensor(mask_pos[-1]) # target the last mask position
                         sequence_output = train_api_request(input_ids=cur_input_ids, attention_mask=cur_attention_mask)
                         last_hidden_state = sequence_output[0].squeeze()
                         logits = last_hidden_state[torch.arange(last_hidden_state.size(0)), mask_pos]
 
-                        label_keys = list(label_to_id.keys())
+                        label_keys = list(label_to_id.keys()) # -> debugging label_keys:[' no', ' yes']
                         label_map = {}
                         for target in label_keys:
-                            label_map[tokenizer.encode(target, add_special_tokens=False)[0]] = label_to_id[target]
+                            label_map[tokenizer.encode(target, add_special_tokens=False)[0]] = label_to_id[target] # {117: 0, 4420: 1}
                         
-                        converted_target = label.clone()
+                        converted_target = label.clone() 
                         for key, val in label_map.items():
-                            converted_target[label == key] = val
+                            converted_target[label == key] = val # -> debugging converted_target:tensor([...
                         interest_index = list(label_map.keys())
                         logits = logits[:, interest_index]
-                        pred = logits.argmax(dim=-1)
+                        pred = logits.argmax(dim=-1) # tensor of predicted label ( 0 or 1)
 
                         if args.ce_loss:
-                            loss = ce_loss(logits.view(-1, config.num_labels), converted_target)
+                            loss = ce_loss(logits.view(-1, config.num_labels), converted_target) # tensor(0.8036)
                         else:
                             loss = hingeloss(logits, converted_target)
                         loss_list.append(loss.item())
@@ -668,6 +688,11 @@ def evaluate(args,  model, eval_dataloader, metric, ce_loss,config, accelerator,
         mask_pos=np.where(np.array(batch['input_ids'].cpu()) == tokenizer.mask_token_id) 
         mask_pos = torch.tensor(mask_pos[-1])
         label_to_id = model.config.label2id 
+
+        #save the batch['input_ids'] in a pickle file
+        import pickle
+        with open('input_ids.pkl', 'wb') as f:
+            pickle.dump(batch['input_ids'], f)
 
         sequence_output = model(input_ids=batch['input_ids'], attention_mask=batch["attention_mask"])
         last_hidden_state = sequence_output[0].squeeze()
