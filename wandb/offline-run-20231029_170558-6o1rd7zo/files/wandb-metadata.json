@@ -1,0 +1,122 @@
+{
+    "os": "Linux-5.15.90.1-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+    "python": "3.11.5",
+    "heartbeatAt": "2023-10-29T17:05:58.680513",
+    "startedAt": "2023-10-29T17:05:58.593652",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "--task_name=mrpc",
+        "--per_device_train_batch_size",
+        "128",
+        "--per_device_eval_batch_size",
+        "16",
+        "--weight_decay=0.1",
+        "--seed=42",
+        "--k_shot",
+        "16",
+        "--prompt_learning_rate",
+        "1e-4",
+        "--sample_size",
+        "20",
+        "--prompt_length",
+        "10",
+        "--prompt_search_space",
+        "200",
+        "--api_limit",
+        "8000",
+        "--ce_loss",
+        "True"
+    ],
+    "state": "running",
+    "program": "/workspaces/basic-python/Black-Box-Prompt-Learning/./run_glue_discrete_LM.py",
+    "codePathLocal": "run_glue_discrete_LM.py",
+    "codePath": "run_glue_discrete_LM.py",
+    "git": {
+        "remote": "https://github.com/shizhediao/Black-Box-Prompt-Learning.git",
+        "commit": "76f42308fdfe8e9bc93c68a518f3f6830e599c17"
+    },
+    "email": "a.sabbatella@campus.unimib.it",
+    "root": "/workspaces/basic-python/Black-Box-Prompt-Learning",
+    "host": "83490bd44dff",
+    "username": "vscode",
+    "executable": "/usr/local/bin/python",
+    "cpu_count": 6,
+    "cpu_count_logical": 12,
+    "cpu_freq": {
+        "current": 3293.724999999999,
+        "min": 0.0,
+        "max": 0.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 3293.725,
+            "min": 0.0,
+            "max": 0.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 1006.853931427002,
+            "used": 26.151504516601562
+        }
+    },
+    "memory": {
+        "total": 6.622173309326172
+    }
+}

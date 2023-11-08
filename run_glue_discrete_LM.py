@@ -160,9 +160,7 @@ def parse_args():
 
     # bypass for debugging
     all_args_list_default = {'task_name': None, 'file_name': None, 'low_resource': False, 'ce_loss': True, 'sample_size': 20, 'prompt_length': 6, 'prompt_learning_rate': 5e-5, 'prompt_search_space': 20, 'num_train_epochs': 30, 'ckpt_path': './ckpts', 'margin': 1, 'trial': False, 'use_wandb': True, 'cuda': 0, 'max_length': 450, 'pad_to_max_length': False, 'per_device_train_batch_size': 128, 'per_device_eval_batch_size': 32, 'model_name_or_path': 'roberta-large', 'use_slow_tokenizer': False, 'weight_decay': 0.1, 'max_train_steps': None, 'gradient_accumulation_steps': 1, 'lr_scheduler_type': 'linear', 'num_warmup_steps': 100, 'output_dir': None, 'seed': 42, 'k_shot': -1, 'use_ngram': True, 'api_limit': 8000}
-
     args_selected = {"task_name": "mrpc", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
-
     args ={}
     for arg in all_args_list_default.keys():
         if arg not in args_selected.keys():
@@ -689,10 +687,7 @@ def evaluate(args,  model, eval_dataloader, metric, ce_loss,config, accelerator,
         mask_pos = torch.tensor(mask_pos[-1])
         label_to_id = model.config.label2id 
 
-        #save the batch['input_ids'] in a pickle file
-        import pickle
-        with open('input_ids.pkl', 'wb') as f:
-            pickle.dump(batch['input_ids'], f)
+
 
         sequence_output = model(input_ids=batch['input_ids'], attention_mask=batch["attention_mask"])
         last_hidden_state = sequence_output[0].squeeze()

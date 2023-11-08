@@ -37,6 +37,7 @@ from botorch.optim import optimize_acqf
 #GaussianProcessRegressor
 #acquisition_function: UpperConfidenceBound, ExpectedImprovement, ProbabilityOfImprovement
 from botorch.acquisition import UpperConfidenceBound, ExpectedImprovement, ProbabilityOfImprovement
+from botorch.acquisition.max_value_entropy_search import qMaxValueEntropy
 import warnings
 
 
@@ -113,7 +114,8 @@ def parse_args():
     all_args_list_default = {'task_name': None, 'file_name': None, 'low_resource': False, 'ce_loss': True, 'sample_size': 20, 'prompt_length': 6, 'prompt_learning_rate': 5e-5, 'prompt_search_space': 20, 'num_train_epochs': 30, 'ckpt_path': './ckpts', 'margin': 1, 'trial': False, 'use_wandb': True, 'cuda': 0, 'max_length': 450, 'pad_to_max_length': False, 'per_device_train_batch_size': 128, 'per_device_eval_batch_size': 32, 'model_name_or_path': 'roberta-large', 'use_slow_tokenizer': False, 'weight_decay': 0.1, 'max_train_steps': None, 'gradient_accumulation_steps': 1, 'lr_scheduler_type': 'linear', 'num_warmup_steps': 100, 'output_dir': None, 'seed': 42, 'k_shot': -1, 'use_ngram': True, 'api_limit': 8000}
 
     args_selected = {"task_name": "mrpc", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
-
+    # args_selected = {"task_name": "mnli", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
+    
     args ={}
     for arg in all_args_list_default.keys():
         if arg not in args_selected.keys():
@@ -147,7 +149,6 @@ def pmi():
     ngram_index_list = list(map(int, unique))
     return ngram_index_list
 
-# (Ant) Function called by the function evaluate
 results = []
 
 
@@ -466,16 +467,14 @@ class BoPrompter(BaseTestProblem):
         # needed in evaluate_true, not sure if this is the correct way to get epoch 
         self.epoch = 0
         self.ngram_list = ngram_list
-        # self.
-
-        
+        max_idx = len(ngram_list) #- 1
         # Initialize the accelerator. We will let the accelerator handle device placement for us in this example.
         accelerator = Accelerator()
 
         # just to not throw error _bounds not defined ***
         # ten times [0, 3143]
         
-        self._bounds = [[0, 3143]] * args.prompt_length
+        self._bounds = [[0, max_idx]] * args.prompt_length
         self.dim  = args.prompt_length
 
         super().__init__()
@@ -489,6 +488,7 @@ class BoPrompter(BaseTestProblem):
 
         setattr(self, "tokenizer", tokenizer)
         setattr(self, "config", config)
+        setattr(self, "max_idx", max_idx)
 
 
 
@@ -521,17 +521,9 @@ class BoPrompter(BaseTestProblem):
         if args.use_ngram:
             prompts_discrete_indices_ngram_list = []
             indices_list = prompts_discrete_indices.int().tolist()
-
-            # dimensions = 81
-            # indices_list = [indices_list[i:i + dimensions] for i in range(0, len(indices_list), dimensions)]
-            # indices_list = indices_list[0]
-
-
             for idx in indices_list:#[0]: # *****hard coded for testing 1 sentence
-                # idx = 5 if idx >= 4985 else idx # **
                 prompts_discrete_indices_ngram_list.append(ngram_list[idx])
             prompts_discrete_ngram_indices = torch.tensor(prompts_discrete_indices_ngram_list)
-
         # Iterate through batches
         count_batch = 0
         for step, batch in enumerate(self.eval_dataloader):
@@ -539,23 +531,18 @@ class BoPrompter(BaseTestProblem):
             # Stop after 100 batches if trial run
             if args.trial and step >= 100:
                 break   
-            
             # Get batch size
             bsz = len(batch['input_ids']) # bsz = 16, torch.Size([16, 71])
-
             # Concatenate prompts and input ids
             if args.use_ngram:
                 batch['input_ids'] = torch.cat([torch.zeros(bsz,1, dtype=torch.long).to(args.device), prompts_discrete_ngram_indices.unsqueeze(0).repeat(bsz, 1).to(args.device), batch['input_ids'][:, 1:]], dim=1) 
             else:
                 batch['input_ids'] = torch.cat([torch.zeros(bsz,1, dtype=torch.long).to(args.device), prompts_discrete_indices.unsqueeze(0).repeat(bsz, 1).to(args.device), batch['input_ids'][:, 1:]], dim=1)
-
             # Concatenate attention masks    
             batch["attention_mask"] = torch.cat([torch.ones(bsz, prompt_length).to(args.device), batch["attention_mask"]], dim=1)
-
             # Get mask token positions
             mask_pos = np.where(np.array(batch['input_ids'].cpu()) == tokenizer.mask_token_id)
             mask_pos = torch.tensor(mask_pos[-1])
-
             # Get label mappings 
             label_to_id = model.config.label2id
 
@@ -590,7 +577,6 @@ class BoPrompter(BaseTestProblem):
             eval_loss_c = ce_loss(logits.view(-1, config.num_labels), converted_target)
 
             print("Cross Entropy Loss: ", eval_loss_c, "batch number:", count_batch)
-            # return eval_loss_c # return the loss 
 
             # Get predictions
             predictions = logits.argmax(dim=-1)
@@ -629,12 +615,12 @@ class BoPrompter(BaseTestProblem):
     
     def generate_initial_data(self, n=10):
         # random_seed = 0
-        random_seed = 42 + 2
+        random_seed = 42 + 3
         print("Random seed: ", random_seed)
         torch.manual_seed(random_seed)
 
         # Expected all inputs to share the same dtype, the train_x so is transformed in a float tensor
-        train_x = torch.randint(0, 3143, (n, self.dim), dtype=torch.float32) # ***tensor of tensor tensor([[2335 ...x10... 810], [...], ... ,[...]])
+        train_x = torch.randint(0, self.max_idx, (n, self.dim), dtype=torch.float32) # ***tensor of tensor tensor([[2335 ...x10... 810], [...], ... ,[...]])
 
         train_y = [ [self.evaluate_true(torch.tensor(x))] for x in train_x ]
         train_y = torch.tensor(train_y) # ***tensor of tensor tensor([[0.0000], [0.0000], ... , [0.0000]])
@@ -642,37 +628,47 @@ class BoPrompter(BaseTestProblem):
 
         return train_x, train_y
 
-    def init_model(self ,train_x, train_y, state_dict=None):
-        # gp = GaussianProcessRegressor(train_x, train_y)
-        gp = SingleTaskGP(train_x, train_y)
-        mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
+    def init_model(self ,train_x, train_y, state_dict=None, gp=None, mll=None):
+        if gp is None:
+            gp = SingleTaskGP
+        if mll is None:
+            mll = ExactMarginalLogLikelihood
+
+        gp = gp(train_x, train_y)
+        mll = mll(gp.likelihood, gp)
+        # gp = gp(train_x, train_y) #SingleTaskGP(train_x, train_y)
+        # mll = mll(gp.likelihood, gp) #ExactMarginalLogLikelihood(gp.likelihood, gp)
         if state_dict is not None:
             gp.load_state_dict(state_dict)
         return gp, mll
 
     def optimize_acquisition_function(self, acquisition_function, bounds, gp, num_restarts=10, raw_samples=100):
-        if(acquisition_function == "ucb"):
-            ucb = UpperConfidenceBound(gp, beta=0.4, maximize=True) # maximize=True for accuracy
-        elif(True): # for now use always ucb
-            ucb = UpperConfidenceBound(gp, beta=0.4, maximize=True) 
-        candidate, _ = optimize_acqf(ucb, bounds=bounds, q=1, num_restarts=20, raw_samples=50)
+        # if(acquisition_function == "ucb"):
+        #     ucb = UpperConfidenceBound(gp, beta=0.4, maximize=True) # maximize=True for accuracy
+        # elif(True): # for now use always ucb
+        #     ucb = UpperConfidenceBound(gp, beta=0.4, maximize=True) 
+        if acquisition_function is None:
+            acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
+        acquisition_function = acquisition_function(gp, beta=0.4, maximize=True)
+
+        candidate, _ = optimize_acqf(acquisition_function, bounds=bounds, q=1, num_restarts=20, raw_samples=50)
         new_point = candidate.detach()#pu().numpy()
         return torch.round(new_point).int() # dafault is 0
     
-    def train_loop(self, verbose = True, npoint= 2):
-        bounds = torch.tensor([[0] * self.dim, [3143] * self.dim], dtype=torch.float32)
+    def train_loop(self, verbose = True, npoint= 2, gp=None, mll=None, acquisition_function=None):
+        bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
         if verbose:
             print("*** Training loop ***")
 
         train_x, train_y = self.generate_initial_data()
         print("Initial train_x: ", train_x)
         print("Initial train_y: ", train_y)
-        gp, mll = self.init_model(train_x, train_y)
+        gp, mll = self.init_model(train_x, train_y, gp=gp, mll=mll)
         loss_value_list = []
         for j in range(npoint):
             if verbose:
                 print(f"* Evaluating point n {j}")
-            acquisition_function="ucb"
+            # acquisition_function="ucb"
             new_point = self.optimize_acquisition_function(acquisition_function, bounds, gp)
             # new_point = new_point.squeeze() # from 2d [[11, 23, 32...]] to 1d [11, 23, 32...]
             current_loss = self.evaluate_true(new_point.squeeze())
@@ -681,38 +677,34 @@ class BoPrompter(BaseTestProblem):
                 print(f"* New point: {new_point}")
             train_x = torch.cat((train_x, new_point), 0)
             train_y = torch.cat((train_y, torch.tensor(current_loss).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
-            gp, mll = self.init_model(train_x, train_y, gp.state_dict())
+            gp, mll = self.init_model(train_x, train_y, gp.state_dict(), gp_arg=gp_arg, mll=mll)
             loss_value_list.append({'point': new_point, 'loss': current_loss})
         return gp, mll, train_x, train_y# ,loss_value_list
 
 if __name__ == "__main__":
     test = BoPrompter()
-    print("testing the BoPrompter")
-    # start = time.time()
+    start = time.time()
+    print("Test of: BoPrompter")
+    # 
     # # tensor = torch.tensor([194, 122, 122,  92, 108,  71,  63, 151,  21,  49])
     # tensor = torch.tensor([0, 1, 2,  3000, 108,  71,  63, 151,  21,  49])
 
     # # res = test(tensor)
     # # print(res)
-    # print("time taken: ", time.time() - start)
-
-
     # Ignora tutti i warning
     warnings.filterwarnings("ignore")
 
+    gp = SingleTaskGP
+    mll = ExactMarginalLogLikelihood
+    # acquisition_function = UpperConfidenceBound 
+    acquisition_function = ExpectedImprovement
+    # acquisition_function = qMaxValueEntropy
+    
+    gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=4, gp=gp, mll=mll, acquisition_function=acquisition_function)
 
-    gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=50)
+    print("time taken: ", time.time() - start)
     print("train_x: ", train_x)
     print("train_y: ", train_y)
-
-    # test = BoPrompter()
-    # # Get first sample 
-    # train_dataloader = test.train_dataloader
-    # for batch in train_dataloader:
-    #     sample = batch['input_ids'][0]
-    #     break
-    # sample = sample.view(1, -1) 
-    # test(sample)
 
 
 #dim 5 50 iter 100
