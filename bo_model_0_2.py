@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import time
 import torch
 # (Ant) Import the function that parse the arguments
@@ -681,24 +682,43 @@ class BoPrompter(BaseTestProblem):
             loss_value_list.append({'point': new_point, 'loss': current_loss})
         return gp, mll, train_x, train_y# ,loss_value_list
 
-if __name__ == "__main__":
-    selected_args = {"task_name": "mrpc", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
-    # rte mrpc sst2 
-    test = BoPrompter(selected_args)
-    start = time.time()
-    print("Test of: BoPrompter")
-    warnings.filterwarnings("ignore")
-    gp_type = SingleTaskGP
-    mll_type = ExactMarginalLogLikelihood
-    # acquisition_function = UpperConfidenceBound
-    npoint = 4
-    gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
+# if __name__ == "__main__":
+#     selected_args = {"task_name": "rte", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
+#     # rte mrpc sst2 
+#     test = BoPrompter(selected_args)
+#     start = time.time()
+#     print("Test of: BoPrompter")
+#     warnings.filterwarnings("ignore")
+#     gp_type = SingleTaskGP
+#     mll_type = ExactMarginalLogLikelihood
+#     # acquisition_function = UpperConfidenceBound
+#     npoint = 4
+#     gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
 
-    print("time taken: ", time.time() - start)
-    print("** Task:", selected_args["task_name"], "**")
-    print("npoint: ", npoint)
-    print("train_x: ", train_x)
-    print("train_y: ", train_y)
+#     print("time taken: ", time.time() - start)
+#     print("** Task:", selected_args["task_name"], "**")
+#     print("npoint: ", npoint)
+#     print("train_x: ", train_x)
+#     print("train_y: ", train_y)
+
+if __name__ == "__main__":
+    tasks = ["rte", "mrpc", "sst2"]
+    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken"])
+    for task in tasks:
+        selected_args = {"task_name": task, "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
+        test = BoPrompter(selected_args)
+        start = time.time()
+        print(f"Test of: BoPrompter for {task}")
+        warnings.filterwarnings("ignore")
+        gp_type = SingleTaskGP
+        mll_type = ExactMarginalLogLikelihood
+        npoint = 4
+        gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
+        # gp, mll, train_x, train_y = (None, None, None, None)
+        df = pd.concat([df, pd.DataFrame([{"Task": task, "GP Type": gp_type, "Mll Type": mll_type, "Npoint": npoint, "Train X": train_x, "Train Y": train_y, "Time Taken": time.time() - start}])], ignore_index=True)
+    path = "/workspaces/basic-python/Black-Box-Prompt-Learning/"
+    df.to_csv(path +"results.csv", index=False)
+    print(df.head())
 
 
 #dim 5 50 iter 100
