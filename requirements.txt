@@ -1,0 +1,9 @@
+numpy
+torch
+transformers
+datasets
+botorch 
+gpytorch
+scipy
+accelerate
+# xformers # memory_efficient_attention to accelerate training

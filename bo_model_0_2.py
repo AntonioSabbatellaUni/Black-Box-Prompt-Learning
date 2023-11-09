@@ -110,10 +110,10 @@ LABEL_CONVERT = {
 DOMAIN_DATASET = ['CI', 'SE', 'RCT', 'HP']
 
 # (Ant) Function called by pmi() to parse the arguments
-def parse_args():
+def parse_args(args_selected=None):
     all_args_list_default = {'task_name': None, 'file_name': None, 'low_resource': False, 'ce_loss': True, 'sample_size': 20, 'prompt_length': 6, 'prompt_learning_rate': 5e-5, 'prompt_search_space': 20, 'num_train_epochs': 30, 'ckpt_path': './ckpts', 'margin': 1, 'trial': False, 'use_wandb': True, 'cuda': 0, 'max_length': 450, 'pad_to_max_length': False, 'per_device_train_batch_size': 128, 'per_device_eval_batch_size': 32, 'model_name_or_path': 'roberta-large', 'use_slow_tokenizer': False, 'weight_decay': 0.1, 'max_train_steps': None, 'gradient_accumulation_steps': 1, 'lr_scheduler_type': 'linear', 'num_warmup_steps': 100, 'output_dir': None, 'seed': 42, 'k_shot': -1, 'use_ngram': True, 'api_limit': 8000}
-
-    args_selected = {"task_name": "mrpc", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
+    if args_selected is None:
+        args_selected = {"task_name": "mrpc", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
     # args_selected = {"task_name": "mnli", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
     
     args ={}
@@ -129,8 +129,8 @@ def parse_args():
     return args
 
 # (Ant) Funcrion called by the function evaluate, taken from run_glue_discrete_LM.py
-def pmi():
-    args = parse_args()
+def pmi(args_selected=None):
+    args = parse_args(args_selected)
     result=[]
     if args.file_name:
         with open("./pmi/" + args.file_name.lower() + ".txt",'r') as f:
@@ -154,10 +154,10 @@ results = []
 
 class BoPrompter(BaseTestProblem):
 
-    def __init__(self):
+    def __init__(self, args_selected=None):
         self.args = parse_args()
         args = self.args 
-        ngram_list = pmi()
+        ngram_list = pmi(args_selected)
 
         # data loader ( form 256 to 500 of original code )
         assert args.task_name != 'stsb'
@@ -649,13 +649,13 @@ class BoPrompter(BaseTestProblem):
         #     ucb = UpperConfidenceBound(gp, beta=0.4, maximize=True) 
         if acquisition_function is None:
             acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
-        acquisition_function = acquisition_function(gp, beta=0.4, maximize=True)
+        acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
 
         candidate, _ = optimize_acqf(acquisition_function, bounds=bounds, q=1, num_restarts=20, raw_samples=50)
         new_point = candidate.detach()#pu().numpy()
         return torch.round(new_point).int() # dafault is 0
     
-    def train_loop(self, verbose = True, npoint= 2, gp=None, mll=None, acquisition_function=None):
+    def train_loop(self, verbose = True, npoint= 2, gp_type=None, mll=None, acquisition_function=None):
         bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
         if verbose:
             print("*** Training loop ***")
@@ -663,7 +663,7 @@ class BoPrompter(BaseTestProblem):
         train_x, train_y = self.generate_initial_data()
         print("Initial train_x: ", train_x)
         print("Initial train_y: ", train_y)
-        gp, mll = self.init_model(train_x, train_y, gp=gp, mll=mll)
+        gp, mll = self.init_model(train_x, train_y, gp=gp_type, mll=mll)
         loss_value_list = []
         for j in range(npoint):
             if verbose:
@@ -677,32 +677,25 @@ class BoPrompter(BaseTestProblem):
                 print(f"* New point: {new_point}")
             train_x = torch.cat((train_x, new_point), 0)
             train_y = torch.cat((train_y, torch.tensor(current_loss).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
-            gp, mll = self.init_model(train_x, train_y, gp.state_dict(), gp_arg=gp_arg, mll=mll)
+            gp, mll = self.init_model(train_x, train_y, gp.state_dict(), gp=gp_type, mll=mll)
             loss_value_list.append({'point': new_point, 'loss': current_loss})
         return gp, mll, train_x, train_y# ,loss_value_list
 
 if __name__ == "__main__":
-    test = BoPrompter()
+    selected_args = {"task_name": "mrpc", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
+    test = BoPrompter(selected_args)
     start = time.time()
     print("Test of: BoPrompter")
-    # 
-    # # tensor = torch.tensor([194, 122, 122,  92, 108,  71,  63, 151,  21,  49])
-    # tensor = torch.tensor([0, 1, 2,  3000, 108,  71,  63, 151,  21,  49])
-
-    # # res = test(tensor)
-    # # print(res)
-    # Ignora tutti i warning
     warnings.filterwarnings("ignore")
-
     gp = SingleTaskGP
     mll = ExactMarginalLogLikelihood
-    # acquisition_function = UpperConfidenceBound 
-    acquisition_function = ExpectedImprovement
-    # acquisition_function = qMaxValueEntropy
-    
-    gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=4, gp=gp, mll=mll, acquisition_function=acquisition_function)
+    # acquisition_function = UpperConfidenceBound
+    npoint = 4
+    gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp, mll=mll, acquisition_function=None)
 
     print("time taken: ", time.time() - start)
+    print("** Task:", selected_args["task_name"], "**")
+    print("npoint: ", npoint)
     print("train_x: ", train_x)
     print("train_y: ", train_y)
 
