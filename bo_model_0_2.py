@@ -628,14 +628,14 @@ class BoPrompter(BaseTestProblem):
 
         return train_x, train_y
 
-    def init_model(self ,train_x, train_y, state_dict=None, gp=None, mll=None):
-        if gp is None:
-            gp = SingleTaskGP
-        if mll is None:
-            mll = ExactMarginalLogLikelihood
+    def init_model(self ,train_x, train_y, state_dict=None, gp_type=None, mll_type=None):
+        if gp_type is None:
+            gp_type = SingleTaskGP
+        if mll_type is None:
+            mll_type = ExactMarginalLogLikelihood
 
-        gp = gp(train_x, train_y)
-        mll = mll(gp.likelihood, gp)
+        gp = gp_type(train_x, train_y)
+        mll = mll_type(gp.likelihood, gp)
         # gp = gp(train_x, train_y) #SingleTaskGP(train_x, train_y)
         # mll = mll(gp.likelihood, gp) #ExactMarginalLogLikelihood(gp.likelihood, gp)
         if state_dict is not None:
@@ -655,15 +655,15 @@ class BoPrompter(BaseTestProblem):
         new_point = candidate.detach()#pu().numpy()
         return torch.round(new_point).int() # dafault is 0
     
-    def train_loop(self, verbose = True, npoint= 2, gp_type=None, mll=None, acquisition_function=None):
+    def train_loop(self, verbose = True, npoint= 2, gp_type=None, mll_type=None, acquisition_function=None):
         bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
         if verbose:
             print("*** Training loop ***")
 
         train_x, train_y = self.generate_initial_data()
-        print("Initial train_x: ", train_x)
-        print("Initial train_y: ", train_y)
-        gp, mll = self.init_model(train_x, train_y, gp=gp_type, mll=mll)
+        # print("Initial train_x: ", train_x)
+        # print("Initial train_y: ", train_y)
+        gp, mll_ = self.init_model(train_x, train_y, gp_type=gp_type, mll_type=mll_type)
         loss_value_list = []
         for j in range(npoint):
             if verbose:
@@ -677,21 +677,22 @@ class BoPrompter(BaseTestProblem):
                 print(f"* New point: {new_point}")
             train_x = torch.cat((train_x, new_point), 0)
             train_y = torch.cat((train_y, torch.tensor(current_loss).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
-            gp, mll = self.init_model(train_x, train_y, gp.state_dict(), gp=gp_type, mll=mll)
+            gp, mll = self.init_model(train_x, train_y, gp.state_dict(), gp_type=gp_type, mll_type=mll_type)
             loss_value_list.append({'point': new_point, 'loss': current_loss})
         return gp, mll, train_x, train_y# ,loss_value_list
 
 if __name__ == "__main__":
     selected_args = {"task_name": "mrpc", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
+    # rte mrpc sst2 
     test = BoPrompter(selected_args)
     start = time.time()
     print("Test of: BoPrompter")
     warnings.filterwarnings("ignore")
-    gp = SingleTaskGP
-    mll = ExactMarginalLogLikelihood
+    gp_type = SingleTaskGP
+    mll_type = ExactMarginalLogLikelihood
     # acquisition_function = UpperConfidenceBound
     npoint = 4
-    gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp, mll=mll, acquisition_function=None)
+    gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
 
     print("time taken: ", time.time() - start)
     print("** Task:", selected_args["task_name"], "**")
