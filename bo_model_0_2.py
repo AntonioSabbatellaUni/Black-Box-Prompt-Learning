@@ -495,14 +495,13 @@ class BoPrompter(BaseTestProblem):
 
 
 
-    def evaluate_true(self, X): # funzione cge valuta | X tensor "list of list" token di input  | a tensor list of scores for each element in X
+    def evaluate_true(self, X, train=True): # funzione cge valuta | X tensor "list of list" token di input  | a tensor list of scores for each element in X
         
         #(Ant) In this case X the output of the Algorithm, not the direct prediction ( need argmax )
 
         # Get predicted prompt indices by taking argmax of probabilities
         # prompts_discrete_indices = X.argmax(1) 
         prompts_discrete_indices = X 
-
         args = self.args
         model = self.model
         tokenizer = self.tokenizer
@@ -529,7 +528,8 @@ class BoPrompter(BaseTestProblem):
             prompts_discrete_ngram_indices = torch.tensor(prompts_discrete_indices_ngram_list)
         # Iterate through batches
         count_batch = 0
-        for step, batch in enumerate(self.eval_dataloader):
+        data_loader = self.train_dataloader if train else self.eval_dataloader
+        for step, batch in enumerate(data_loader):
             count_batch += 1
             # Stop after 100 batches if trial run
             if args.trial and step >= 100:
@@ -699,7 +699,7 @@ if __name__ == "__main__":
         warnings.filterwarnings("ignore")
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
-        npoint = 1
+        npoint = 50
         gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         # gp, mll, train_x, train_y = (None, None, None, None)
         df = pd.concat([df, pd.DataFrame([{"Task": task, "GP Type": gp_type, "Mll Type": mll_type, "Npoint": npoint, "Train X": train_x, "Train Y": train_y, "Time Taken": time.time() - start}])], ignore_index=True)
@@ -707,6 +707,7 @@ if __name__ == "__main__":
         # save the file in each iteration for prevent losing data in case of an error 
         path =  "/home/vscode/Black-Box-Prompt-Learning/"
         df.to_csv(path +"results.csv", index=False)
+
     print(df.head())
     df = pd.read_csv(path +"results.csv")
     print(df.head())
