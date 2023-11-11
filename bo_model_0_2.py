@@ -40,6 +40,8 @@ from botorch.optim import optimize_acqf
 from botorch.acquisition import UpperConfidenceBound, ExpectedImprovement, ProbabilityOfImprovement
 from botorch.acquisition.max_value_entropy_search import qMaxValueEntropy
 import warnings
+from tqdm import tqdm
+from tqdm import tqdm
 
 
 
@@ -130,21 +132,21 @@ def parse_args(args_selected=None):
     return args
 
 # (Ant) Funcrion called by the function evaluate, taken from run_glue_discrete_LM.py
+
+
 def pmi(args_selected=None):
     args = parse_args(args_selected)
     result=[]
     if args.file_name:
         with open("./pmi/" + args.file_name.lower() + ".txt",'r') as f:
-            for line in f:
+            for line in tqdm(f, desc="Reading file " + args.file_name.lower()+ ".txt"):
                 result = result + (list(line.strip('\n').split(',')))
     elif args.task_name:
         path =  "/home/vscode/Black-Box-Prompt-Learning"
         with open(path + "/pmi/" + args.task_name.lower() + ".txt",'r') as f:
-            
-            for line in f:
+            for line in tqdm(f, desc=f"Reading file {args.task_name.lower()}.txt"):
                 result = result + (list(line.strip('\n').split(',')))
 
-    # (Ant) This is the original code, but it doesn't work because the path is wrong
     unique = []
     [unique.append(i) for i in result if not i in unique]
     ngram_index_list = list(map(int, unique))
@@ -682,38 +684,22 @@ class BoPrompter(BaseTestProblem):
             loss_value_list.append({'point': new_point, 'loss': current_loss})
         return gp, mll, train_x, train_y# ,loss_value_list
 
-# if __name__ == "__main__":
-#     selected_args = {"task_name": "rte", "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
-#     # rte mrpc sst2 
-#     test = BoPrompter(selected_args)
-#     start = time.time()
-#     print("Test of: BoPrompter")
-#     warnings.filterwarnings("ignore")
-#     gp_type = SingleTaskGP
-#     mll_type = ExactMarginalLogLikelihood
-#     # acquisition_function = UpperConfidenceBound
-#     npoint = 200
-#     gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
-
-#     print("time taken: ", time.time() - start)
-#     print("** Task:", selected_args["task_name"], "**")
-#     print("npoint: ", npoint)
-#     print("train_x: ", train_x)
-#     print("train_y: ", train_y)
-
 if __name__ == "__main__":
-    tasks = ["mrpc", "sst2", "rte", "qnli"]
+    tasks = ["mnli", "qqp", "mrpc", "sst2", "rte", "qnli"]
+    prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50} # dictionary to store prompt length for each task
+
     df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken"])
     for task in tasks:
-        print("task: ", task)
-        selected_args = {"task_name": task, "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 50, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
+        print(f"Task: {task}, Prompt Length: {prompt_length[task]}")
+
+        selected_args = {"task_name": task, "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": prompt_length[task], "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
         test = BoPrompter(selected_args)
         start = time.time()
         print(f"Test of: BoPrompter for {task}")
         warnings.filterwarnings("ignore")
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
-        npoint = 300
+        npoint = 1
         gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         # gp, mll, train_x, train_y = (None, None, None, None)
         df = pd.concat([df, pd.DataFrame([{"Task": task, "GP Type": gp_type, "Mll Type": mll_type, "Npoint": npoint, "Train X": train_x, "Train Y": train_y, "Time Taken": time.time() - start}])], ignore_index=True)
