@@ -42,6 +42,7 @@ from botorch.acquisition.max_value_entropy_search import qMaxValueEntropy
 import warnings
 from tqdm import tqdm
 from tqdm import tqdm
+import os
 
 
 
@@ -134,16 +135,17 @@ def parse_args(args_selected=None):
 # (Ant) Funcrion called by the function evaluate, taken from run_glue_discrete_LM.py
 
 
+
 def pmi(args_selected=None):
     args = parse_args(args_selected)
     result=[]
     if args.file_name:
-        with open("./pmi/" + args.file_name.lower() + ".txt",'r') as f:
+        with open(os.path.join(os.path.dirname(__file__), "pmi", args.file_name.lower() + ".txt"), 'r') as f:
             for line in tqdm(f, desc="Reading file " + args.file_name.lower()+ ".txt"):
                 result = result + (list(line.strip('\n').split(',')))
     elif args.task_name:
-        path =  "/home/vscode/Black-Box-Prompt-Learning"
-        with open(path + "/pmi/" + args.task_name.lower() + ".txt",'r') as f:
+        path = os.path.join(os.path.dirname(__file__), "pmi")
+        with open(os.path.join(path, args.task_name.lower() + ".txt"), 'r') as f:
             for line in tqdm(f, desc=f"Reading file {args.task_name.lower()}.txt"):
                 result = result + (list(line.strip('\n').split(',')))
 
@@ -698,7 +700,7 @@ if __name__ == "__main__":
         warnings.filterwarnings("ignore")
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
-        npoint = 50
+        npoint = 10
         gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         # gp, mll, train_x, train_y = (None, None, None, None)
 
@@ -706,7 +708,7 @@ if __name__ == "__main__":
         # best_5_indices = train_y_sorted_indices[:5]
         # best_5_points = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in best_5_indices]
         best_5_points = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in torch.argsort(train_y.squeeze(), dim=0, descending=True)[:5]]
-        
+        # best_5_points = [None, None, None, None, None]
         new_row = {
             "Task": task,
             "GP Type": gp_type,
@@ -719,8 +721,9 @@ if __name__ == "__main__":
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         # save the file in each iteration for prevent losing data in case of an error 
-        path =  "/home/vscode/Black-Box-Prompt-Learning/"
-        df.to_csv(path +"results.csv", index=False)
+        filename = "results.csv"
+        path = os.path.join(os.getcwd(), filename)
+        df.to_csv(path, index=False)
 
     print(df.head())
     df = pd.read_csv(path +"results.csv")
