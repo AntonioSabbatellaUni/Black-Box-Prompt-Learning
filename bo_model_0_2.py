@@ -549,7 +549,7 @@ class BoPrompter(BaseTestProblem):
             # Get label mappings 
             label_to_id = model.config.label2id
 
-            print("levaluating: ", batch['input_ids'].shape)
+            # print("evaluating: ", batch['input_ids'].shape)
             # Forward pass
             with torch.no_grad():
                 sequence_output = model(input_ids=batch['input_ids'], attention_mask=batch["attention_mask"])
@@ -579,7 +579,7 @@ class BoPrompter(BaseTestProblem):
             # Compute loss
             eval_loss_c = ce_loss(logits.view(-1, config.num_labels), converted_target)
 
-            print("Cross Entropy Loss: ", eval_loss_c, "batch number:", count_batch)
+            print(f"Cross Entropy Loss: {eval_loss_c}, batch number: {count_batch}, input_ids shape: {batch['input_ids'].shape}")
 
             # Get predictions
             predictions = logits.argmax(dim=-1)
@@ -669,15 +669,13 @@ class BoPrompter(BaseTestProblem):
         gp, mll_ = self.init_model(train_x, train_y, gp_type=gp_type, mll_type=mll_type)
         loss_value_list = []
         for j in range(npoint):
-            if verbose:
-                print(f"* Evaluating point n {j}")
             # acquisition_function="ucb"
             new_point = self.optimize_acquisition_function(acquisition_function, bounds, gp)
             # new_point = new_point.squeeze() # from 2d [[11, 23, 32...]] to 1d [11, 23, 32...]
             current_loss = self.evaluate_true(new_point.squeeze())
 
             if verbose:
-                print(f"* New point: {new_point}")
+                print(f"*Evaluating point n {j}: \n {new_point}")
             train_x = torch.cat((train_x, new_point), 0)
             train_y = torch.cat((train_y, torch.tensor(current_loss).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
             gp, mll = self.init_model(train_x, train_y, gp.state_dict(), gp_type=gp_type, mll_type=mll_type)
@@ -685,10 +683,11 @@ class BoPrompter(BaseTestProblem):
         return gp, mll, train_x, train_y# ,loss_value_list
 
 if __name__ == "__main__":
-    tasks = ["mnli", "qqp", "mrpc", "sst2", "rte", "qnli"]
+    # tasks = ["mnli", "qqp", "mrpc", "sst2", "rte", "qnli"]
+    tasks = [ "mnli","mrpc", "qqp", "sst2", "rte", "qnli"]
     prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50} # dictionary to store prompt length for each task
 
-    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken"])
+    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Best 5 point score on validation"])
     for task in tasks:
         print(f"Task: {task}, Prompt Length: {prompt_length[task]}")
 
@@ -702,8 +701,23 @@ if __name__ == "__main__":
         npoint = 50
         gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         # gp, mll, train_x, train_y = (None, None, None, None)
-        df = pd.concat([df, pd.DataFrame([{"Task": task, "GP Type": gp_type, "Mll Type": mll_type, "Npoint": npoint, "Train X": train_x, "Train Y": train_y, "Time Taken": time.time() - start}])], ignore_index=True)
+
+        # train_y_sorted_indices = torch.argsort(train_y.squeeze(), dim=0, descending=True)
+        # best_5_indices = train_y_sorted_indices[:5]
+        # best_5_points = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in best_5_indices]
+        best_5_points = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in torch.argsort(train_y.squeeze(), dim=0, descending=True)[:5]]
         
+        new_row = {
+            "Task": task,
+            "GP Type": gp_type,
+            "Mll Type": mll_type,
+            "Npoint": npoint,
+            "Train X": train_x,
+            "Train Y": train_y,
+            "Time Taken": time.time() - start,
+            "Best 5 point score on validation": best_5_points
+        }
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         # save the file in each iteration for prevent losing data in case of an error 
         path =  "/home/vscode/Black-Box-Prompt-Learning/"
         df.to_csv(path +"results.csv", index=False)
