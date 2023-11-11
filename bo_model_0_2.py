@@ -138,7 +138,7 @@ def pmi(args_selected=None):
             for line in f:
                 result = result + (list(line.strip('\n').split(',')))
     elif args.task_name:
-        path =  "/workspaces/basic-python/Black-Box-Prompt-Learning/"
+        path =  "/home/vscode/Black-Box-Prompt-Learning"
         with open(path + "/pmi/" + args.task_name.lower() + ".txt",'r') as f:
             
             for line in f:
@@ -156,7 +156,7 @@ results = []
 class BoPrompter(BaseTestProblem):
 
     def __init__(self, args_selected=None):
-        self.args = parse_args()
+        self.args = parse_args(args_selected)
         args = self.args 
         ngram_list = pmi(args_selected)
 
@@ -468,7 +468,7 @@ class BoPrompter(BaseTestProblem):
         # needed in evaluate_true, not sure if this is the correct way to get epoch 
         self.epoch = 0
         self.ngram_list = ngram_list
-        max_idx = len(ngram_list) #- 1
+        max_idx = len(ngram_list)-1 #- 1
         # Initialize the accelerator. We will let the accelerator handle device placement for us in this example.
         accelerator = Accelerator()
 
@@ -692,7 +692,7 @@ class BoPrompter(BaseTestProblem):
 #     gp_type = SingleTaskGP
 #     mll_type = ExactMarginalLogLikelihood
 #     # acquisition_function = UpperConfidenceBound
-#     npoint = 4
+#     npoint = 200
 #     gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
 
 #     print("time taken: ", time.time() - start)
@@ -702,22 +702,27 @@ class BoPrompter(BaseTestProblem):
 #     print("train_y: ", train_y)
 
 if __name__ == "__main__":
-    tasks = ["rte", "mrpc", "sst2"]
+    tasks = ["mrpc", "sst2", "rte", "qnli"]
     df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken"])
     for task in tasks:
-        selected_args = {"task_name": task, "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 10, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
+        print("task: ", task)
+        selected_args = {"task_name": task, "per_device_train_batch_size": 128, "per_device_eval_batch_size": 16, "weight_decay": 0.1, "seed": 42, "k_shot": 16, "prompt_learning_rate": 1e-4, "sample_size": 20, "prompt_length": 50, "prompt_search_space": 200, "api_limit": 8000, "ce_loss": True}
         test = BoPrompter(selected_args)
         start = time.time()
         print(f"Test of: BoPrompter for {task}")
         warnings.filterwarnings("ignore")
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
-        npoint = 4
+        npoint = 300
         gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         # gp, mll, train_x, train_y = (None, None, None, None)
         df = pd.concat([df, pd.DataFrame([{"Task": task, "GP Type": gp_type, "Mll Type": mll_type, "Npoint": npoint, "Train X": train_x, "Train Y": train_y, "Time Taken": time.time() - start}])], ignore_index=True)
-    path = "/workspaces/basic-python/Black-Box-Prompt-Learning/"
-    df.to_csv(path +"results.csv", index=False)
+        
+        # save the file in each iteration for prevent losing data in case of an error 
+        path =  "/home/vscode/Black-Box-Prompt-Learning/"
+        df.to_csv(path +"results.csv", index=False)
+    print(df.head())
+    df = pd.read_csv(path +"results.csv")
     print(df.head())
 
 
