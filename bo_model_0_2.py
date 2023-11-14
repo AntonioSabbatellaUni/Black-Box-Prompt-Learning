@@ -43,6 +43,7 @@ import warnings
 from tqdm import tqdm
 from tqdm import tqdm
 import os
+import time
 
 
 
@@ -497,7 +498,7 @@ class BoPrompter(BaseTestProblem):
 
 
 
-    def evaluate_true(self, X, train=True): # funzione cge valuta | X tensor "list of list" token di input  | a tensor list of scores for each element in X
+    def evaluate_true(self, X, dataloader_type="train"): # funzione cge valuta | X tensor "list of list" token di input  | a tensor list of scores for each element in X
         
         #(Ant) In this case X the output of the Algorithm, not the direct prediction ( need argmax )
 
@@ -530,7 +531,13 @@ class BoPrompter(BaseTestProblem):
             prompts_discrete_ngram_indices = torch.tensor(prompts_discrete_indices_ngram_list)
         # Iterate through batches
         count_batch = 0
-        data_loader = self.train_dataloader if train else self.eval_dataloader
+        if dataloader_type == "train":
+            data_loader = self.train_dataloader
+        elif dataloader_type == "test":
+            data_loader = self.test_dataloader
+        else:
+            data_loader = self.eval_dataloader
+        
         for step, batch in enumerate(data_loader):
             count_batch += 1
             # Stop after 100 batches if trial run
@@ -633,6 +640,7 @@ class BoPrompter(BaseTestProblem):
 
         return train_x, train_y
 
+
     def init_model(self ,train_x, train_y, state_dict=None, gp_type=None, mll_type=None):
         if gp_type is None:
             gp_type = SingleTaskGP
@@ -646,6 +654,13 @@ class BoPrompter(BaseTestProblem):
         if state_dict is not None:
             gp.load_state_dict(state_dict)
         return gp, mll
+    
+    def timed_init_model(self, train_x, train_y, state_dict=None, gp_type=None, mll_type=None):
+        start_time = time.time()
+        gp, mll = self.init_model(train_x, train_y, state_dict, gp_type, mll_type)
+        end_time = time.time()
+        time_taken = end_time - start_time
+        return gp, mll, time_taken
 
     def optimize_acquisition_function(self, acquisition_function, bounds, gp, num_restarts=10, raw_samples=100):
         # if(acquisition_function == "ucb"):
@@ -668,7 +683,7 @@ class BoPrompter(BaseTestProblem):
         train_x, train_y = self.generate_initial_data()
         # print("Initial train_x: ", train_x)
         # print("Initial train_y: ", train_y)
-        gp, mll_ = self.init_model(train_x, train_y, gp_type=gp_type, mll_type=mll_type)
+        gp, mll_ , time_bo = self.timed_init_model(train_x, train_y, gp_type=gp_type, mll_type=mll_type)
         loss_value_list = []
         for j in range(npoint):
             # acquisition_function="ucb"
@@ -680,16 +695,17 @@ class BoPrompter(BaseTestProblem):
                 print(f"*Evaluating point n {j}: \n {new_point}")
             train_x = torch.cat((train_x, new_point), 0)
             train_y = torch.cat((train_y, torch.tensor(current_loss).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
-            gp, mll = self.init_model(train_x, train_y, gp.state_dict(), gp_type=gp_type, mll_type=mll_type)
+            gp, mll, time_init_bo = self.timed_init_model(train_x, train_y, gp.state_dict(), gp_type=gp_type, mll_type=mll_type)
+            time_bo += time_init_bo
             loss_value_list.append({'point': new_point, 'loss': current_loss})
-        return gp, mll, train_x, train_y# ,loss_value_list
+        return gp, mll, train_x, train_y, time_bo# ,loss_value_list
 
 if __name__ == "__main__":
     # tasks = ["mnli", "qqp", "mrpc", "sst2", "rte", "qnli"]
-    tasks = [ "mnli","mrpc", "qqp", "sst2", "rte", "qnli"]
+    tasks = [ "mrpc", "mnli", "qqp", "sst2", "rte", "qnli"]
     prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50} # dictionary to store prompt length for each task
 
-    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Best 5 point score on validation"])
+    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Time Bo","Best 5 point score on validation"])
     for task in tasks:
         print(f"Task: {task}, Prompt Length: {prompt_length[task]}")
 
@@ -700,15 +716,24 @@ if __name__ == "__main__":
         warnings.filterwarnings("ignore")
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
-        npoint = 10
-        gp, mll, train_x, train_y = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
+        npoint = 5
+        gp, mll, train_x, train_y, time_bo = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         # gp, mll, train_x, train_y = (None, None, None, None)
-
+        # best_point_eval = [None, None, None, None, None]
+        
         # train_y_sorted_indices = torch.argsort(train_y.squeeze(), dim=0, descending=True)
         # best_5_indices = train_y_sorted_indices[:5]
-        # best_5_points = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in best_5_indices]
-        best_5_points = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in torch.argsort(train_y.squeeze(), dim=0, descending=True)[:5]]
-        # best_5_points = [None, None, None, None, None]
+        # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in best_5_indices]
+        # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in torch.argsort(train_y.squeeze(), dim=0, descending=True)[:5]]
+        
+        best_y_indices = torch.argsort(train_y.squeeze(), dim=0, descending=True)
+        best_y = train_y[best_y_indices[0]]
+        best_y_indices = best_y_indices[torch.abs(train_y.squeeze() - best_y.squeeze()) < 0.001]
+        best_x = [train_x[i].squeeze() for i in best_y_indices]
+        best_x = list(set(best_x))        
+        best_point_eval = [test.evaluate_true(x, dataloader_type="Eval") for x in best_x]
+
+        
         new_row = {
             "Task": task,
             "GP Type": gp_type,
@@ -717,7 +742,8 @@ if __name__ == "__main__":
             "Train X": train_x,
             "Train Y": train_y,
             "Time Taken": time.time() - start,
-            "Best 5 point score on validation": best_5_points
+            "Time BO": time_bo,
+            "Best point score on validation": best_point_eval
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         # save the file in each iteration for prevent losing data in case of an error 

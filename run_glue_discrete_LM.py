@@ -201,6 +201,7 @@ def pmi():
                 result = result + (list(line.strip('\n').split(',')))
     elif args.task_name:
         path =  "/workspaces/basic-python/Black-Box-Prompt-Learning/"
+        path = os.getcwd()
         with open(path + "/pmi/" + args.task_name.lower() + ".txt",'r') as f:
         # with open("./pmi/" + args.task_name.lower() + ".txt",'r') as f:
             for line in f:
@@ -239,7 +240,7 @@ def main():
 
     if args.use_wandb:
         args.group_name = "RoBERTa_BDPL_" + task_name
-        wandb.init(config=args, project="blackbox_prompt", group=args.group_name)
+        # wandb.init(config=args, project="blackbox_prompt", group=args.group_name)
 
     # Initialize the accelerator. We will let the accelerator handle device placement for us in this example.
     accelerator = Accelerator()
