@@ -534,8 +534,10 @@ class BoPrompter(BaseTestProblem):
         if dataloader_type == "train":
             data_loader = self.train_dataloader
         elif dataloader_type == "test":
+            print("dataloader: test")
             data_loader = self.test_dataloader
         else:
+            print("dataloader: eval")
             data_loader = self.eval_dataloader
         
         for step, batch in enumerate(data_loader):
@@ -705,7 +707,7 @@ if __name__ == "__main__":
     tasks = [ "mrpc", "mnli", "qqp", "sst2", "rte", "qnli"]
     prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50} # dictionary to store prompt length for each task
 
-    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Time Bo","Best 5 point score on validation" , "Best point score on test"])
+    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Time Bo", "Best point score on test"])
     for task in tasks:
         print(f"Task: {task}, Prompt Length: {prompt_length[task]}")
 
