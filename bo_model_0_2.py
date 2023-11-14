@@ -705,7 +705,7 @@ if __name__ == "__main__":
     tasks = [ "mrpc", "mnli", "qqp", "sst2", "rte", "qnli"]
     prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50} # dictionary to store prompt length for each task
 
-    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Time Bo","Best 5 point score on validation"])
+    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Time Bo","Best 5 point score on validation" , "Best point score on test"])
     for task in tasks:
         print(f"Task: {task}, Prompt Length: {prompt_length[task]}")
 
@@ -716,7 +716,7 @@ if __name__ == "__main__":
         warnings.filterwarnings("ignore")
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
-        npoint = 5
+        npoint = 50
         gp, mll, train_x, train_y, time_bo = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         # gp, mll, train_x, train_y = (None, None, None, None)
         # best_point_eval = [None, None, None, None, None]
@@ -732,6 +732,7 @@ if __name__ == "__main__":
         best_x = [train_x[i].squeeze() for i in best_y_indices]
         best_x = list(set(best_x))        
         best_point_eval = [test.evaluate_true(x, dataloader_type="Eval") for x in best_x]
+        best_point_test = [test.evaluate_true(x, dataloader_type="Test") for x in best_x]
 
         
         new_row = {
@@ -742,8 +743,9 @@ if __name__ == "__main__":
             "Train X": train_x,
             "Train Y": train_y,
             "Time Taken": time.time() - start,
-            "Time BO": time_bo,
-            "Best point score on validation": best_point_eval
+            "Time Bo": time_bo,
+            "Best point score on validation": best_point_eval,
+            "Best point score on test": best_point_test
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         # save the file in each iteration for prevent losing data in case of an error 
