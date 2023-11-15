@@ -732,9 +732,12 @@ if __name__ == "__main__":
         best_y = train_y[best_y_indices[0]]
         best_y_indices = best_y_indices[torch.abs(train_y.squeeze() - best_y.squeeze()) < 0.001]
         best_x = [train_x[i].squeeze() for i in best_y_indices]
-        best_x = list(set(best_x))        
+        best_x = list(set(best_x))
+        if len(best_x) > 10:
+            best_x = best_x[:10]
         best_point_eval = [test.evaluate_true(x, dataloader_type="eval") for x in best_x]
         best_point_test = [test.evaluate_true(x, dataloader_type="test") for x in best_x]
+
 
         
         new_row = {
