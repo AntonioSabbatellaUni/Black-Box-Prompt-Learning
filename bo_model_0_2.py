@@ -629,7 +629,7 @@ class BoPrompter(BaseTestProblem):
     
     def generate_initial_data(self, n=10):
         # random_seed = 0
-        random_seed = 42 + 3
+        random_seed = 42
         print("Random seed: ", random_seed)
         torch.manual_seed(random_seed)
 
@@ -667,12 +667,9 @@ class BoPrompter(BaseTestProblem):
     def optimize_acquisition_function(self, acquisition_function, bounds, gp, num_restarts=10, raw_samples=100):
         # if(acquisition_function == "ucb"):
         #     ucb = UpperConfidenceBound(gp, beta=0.4, maximize=True) # maximize=True for accuracy
-        # elif(True): # for now use always ucb
-        #     ucb = UpperConfidenceBound(gp, beta=0.4, maximize=True) 
         if acquisition_function is None:
             acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
         acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
-
         candidate, _ = optimize_acqf(acquisition_function, bounds=bounds, q=1, num_restarts=20, raw_samples=50)
         new_point = candidate.detach()#pu().numpy()
         return torch.round(new_point).int() # dafault is 0
@@ -681,26 +678,27 @@ class BoPrompter(BaseTestProblem):
         bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
         if verbose:
             print("*** Training loop ***")
-
         train_x, train_y = self.generate_initial_data()
-        # print("Initial train_x: ", train_x)
-        # print("Initial train_y: ", train_y)
+        eval_y = torch.zeros((train_y.__len__(), 1), dtype=torch.float32)
+
         gp, mll_ , time_bo = self.timed_init_model(train_x, train_y, gp_type=gp_type, mll_type=mll_type)
         loss_value_list = []
         for j in range(npoint):
             # acquisition_function="ucb"
             new_point = self.optimize_acquisition_function(acquisition_function, bounds, gp)
             # new_point = new_point.squeeze() # from 2d [[11, 23, 32...]] to 1d [11, 23, 32...]
-            current_loss = self.evaluate_true(new_point.squeeze())
+            y_train_score = self.evaluate_true(new_point.squeeze())
+            y_eval_score = self.evaluate_true(new_point.squeeze(), dataloader_type="eval")
 
             if verbose:
                 print(f"*Evaluating point n {j}: \n {new_point}")
             train_x = torch.cat((train_x, new_point), 0)
-            train_y = torch.cat((train_y, torch.tensor(current_loss).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
+            train_y = torch.cat((train_y, torch.tensor(y_train_score).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
+            eval_y = torch.cat((eval_y, torch.tensor(y_eval_score).unsqueeze(0).unsqueeze(0)), 0)
             gp, mll, time_init_bo = self.timed_init_model(train_x, train_y, gp.state_dict(), gp_type=gp_type, mll_type=mll_type)
             time_bo += time_init_bo
-            loss_value_list.append({'point': new_point, 'loss': current_loss})
-        return gp, mll, train_x, train_y, time_bo# ,loss_value_list
+            loss_value_list.append({'point': new_point, 'train_score': y_train_score, 'eval_score': y_eval_score})
+        return gp, mll, train_x, train_y, eval_y, time_bo # ,loss_value_list
 
 if __name__ == "__main__":
     # tasks = ["mnli", "qqp", "mrpc", "sst2", "rte", "qnli"]
@@ -718,28 +716,31 @@ if __name__ == "__main__":
         warnings.filterwarnings("ignore")
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
-        npoint = 50
-        gp, mll, train_x, train_y, time_bo = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
+        npoint = 3
+        gp, mll, train_x, train_y, eval_y, time_bo = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         # gp, mll, train_x, train_y = (None, None, None, None)
         # best_point_eval = [None, None, None, None, None]
-        
         # train_y_sorted_indices = torch.argsort(train_y.squeeze(), dim=0, descending=True)
         # best_5_indices = train_y_sorted_indices[:5]
         # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in best_5_indices]
         # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in torch.argsort(train_y.squeeze(), dim=0, descending=True)[:5]]
-        
-        best_y_indices = torch.argsort(train_y.squeeze(), dim=0, descending=True)
-        best_y = train_y[best_y_indices[0]]
-        best_y_indices = best_y_indices[torch.abs(train_y.squeeze() - best_y.squeeze()) < 0.001]
-        best_x = [train_x[i].squeeze() for i in best_y_indices]
-        best_x = list(set(best_x))
-        if len(best_x) > 10:
-            best_x = best_x[:10]
-        best_point_eval = [test.evaluate_true(x, dataloader_type="eval") for x in best_x]
-        best_point_test = [test.evaluate_true(x, dataloader_type="test") for x in best_x]
 
+        # best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
+        # best_y = eval_y[best_eval_y_indices[0]]
+        # best_eval_y_indices = best_eval_y_indices[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001]
+        # best_x = [train_x[i].squeeze() for i in best_eval_y_indices]
+        # best_x = list(set(best_x))
 
-        
+        best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
+        best_y = eval_y[best_eval_y_indices[0]]
+        list_best_x = train_x[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001]
+
+        print(f"Number of candidate Best x: {list_best_x.shape[0]}")
+        if list_best_x.shape[0] > 10:
+            list_best_x = list_best_x[:10]
+        best_score_eval = eval_y[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001].squeeze()
+        best_scores_test = [test.evaluate_true(x, dataloader_type="test") for x in list_best_x]
+
         new_row = {
             "Task": task,
             "GP Type": gp_type,
@@ -749,8 +750,8 @@ if __name__ == "__main__":
             "Train Y": train_y,
             "Time Taken": time.time() - start,
             "Time Bo": time_bo,
-            "Best point score on validation": best_point_eval,
-            "Best point score on test": best_point_test
+            "Best scores on validation": best_score_eval.squeeze().tolist(),
+            "Best scores on test": best_scores_test
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         # save the file in each iteration for prevent losing data in case of an error 
