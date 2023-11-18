@@ -479,8 +479,10 @@ class BoPrompter(BaseTestProblem):
 
         # just to not throw error _bounds not defined ***
         # ten times [0, 3143]
-        
-        self._bounds = [[0, max_idx]] * args.prompt_length
+        if args.task_name == 'mnli':
+            self._bounds = [[0, 1]] * args.prompt_length
+        else:
+            self._bounds = [[0, max_idx]] * args.prompt_length
         self.dim  = args.prompt_length
 
         super().__init__()
@@ -497,6 +499,33 @@ class BoPrompter(BaseTestProblem):
         setattr(self, "max_idx", max_idx)
 
 
+
+    def scale_indices(self, indices, min_idx=None, max_idx=None):
+        if min_idx is None:
+            min_idx = 0
+        if max_idx is None:
+            max_idx = self.max_idx
+
+        indices = indices.clone()
+        if isinstance(indices, torch.Tensor):
+            scaled = (indices - min_idx) / (max_idx - min_idx)
+        else:
+            scaled = [(x - min_idx) / (max_idx - min_idx) for x in indices]
+        
+        return scaled
+
+    def inverse_scale_indices(self, scaled, min_idx=None, max_idx=None):
+        if min_idx is None:
+            min_idx = 0
+        if max_idx is None:
+            max_idx = self.max_idx
+
+        if isinstance(scaled, torch.Tensor):
+            indices = scaled * (max_idx - min_idx) + min_idx
+        else:
+            indices = [x * (max_idx - min_idx) + min_idx for x in scaled]
+        
+        return indices
 
     def evaluate_true(self, X, dataloader_type="train"): # funzione cge valuta | X tensor "list of list" token di input  | a tensor list of scores for each element in X
         
@@ -672,40 +701,74 @@ class BoPrompter(BaseTestProblem):
         acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
         candidate, _ = optimize_acqf(acquisition_function, bounds=bounds, q=1, num_restarts=20, raw_samples=50)
         new_point = candidate.detach()#pu().numpy()
+
+        if self.args.task_name == 'mnli':
+            return new_point
         return torch.round(new_point).int() # dafault is 0
     
     def train_loop(self, verbose = True, npoint= 2, gp_type=None, mll_type=None, acquisition_function=None):
-        bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
         if verbose:
             print("*** Training loop ***")
+
         train_x, train_y = self.generate_initial_data()
         eval_y = torch.zeros((train_y.__len__(), 1), dtype=torch.float32)
 
-        gp, mll_ , time_bo = self.timed_init_model(train_x, train_y, gp_type=gp_type, mll_type=mll_type)
+        mnli = True if self.args.task_name == "mnli" else False
+        if mnli:
+            bounds = torch.tensor([[0] * self.dim, [1] * self.dim], dtype=torch.float32)
+            s_train_x = self.scale_indices(train_x)
+            gp, mll_ , time_bo = self.timed_init_model(s_train_x, train_y, gp_type=gp_type, mll_type=mll_type)
+        else:
+            bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
+            gp, mll_ , time_bo = self.timed_init_model(train_x, train_y, gp_type=gp_type, mll_type=mll_type)
+
+        
         loss_value_list = []
         for j in range(npoint):
             # acquisition_function="ucb"
-            new_point = self.optimize_acquisition_function(acquisition_function, bounds, gp)
-            # new_point = new_point.squeeze() # from 2d [[11, 23, 32...]] to 1d [11, 23, 32...]
-            y_train_score = self.evaluate_true(new_point.squeeze())
-            y_eval_score = self.evaluate_true(new_point.squeeze(), dataloader_type="eval")
+            if mnli:
+                new_point_2d = self.optimize_acquisition_function(acquisition_function, bounds, gp)
+                new_point = new_point_2d.squeeze() # from 2d [[11, 23, 32...]] to 1d [11, 23, 32...]
+                new_point = self.inverse_scale_indices(new_point)
+                new_point = torch.round(new_point).int()
+                
+                y_train_score = self.evaluate_true(new_point)
+                y_eval_score = self.evaluate_true(new_point, dataloader_type="eval")
 
-            if verbose:
-                print(f"*Evaluating point n {j}: \n {new_point}")
-            train_x = torch.cat((train_x, new_point), 0)
-            train_y = torch.cat((train_y, torch.tensor(y_train_score).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
-            eval_y = torch.cat((eval_y, torch.tensor(y_eval_score).unsqueeze(0).unsqueeze(0)), 0)
-            gp, mll, time_init_bo = self.timed_init_model(train_x, train_y, gp.state_dict(), gp_type=gp_type, mll_type=mll_type)
-            time_bo += time_init_bo
-            loss_value_list.append({'point': new_point, 'train_score': y_train_score, 'eval_score': y_eval_score})
+                if verbose:
+                    print(f"*Evaluating point n {j}: \n {new_point}")
+                train_x = torch.cat((train_x, new_point_2d), 0)
+                train_y = torch.cat((train_y, torch.tensor(y_train_score).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
+                eval_y = torch.cat((eval_y, torch.tensor(y_eval_score).unsqueeze(0).unsqueeze(0)), 0)
+
+                s_train_x = self.scale_indices(train_x)
+                gp, mll, time_init_bo = self.timed_init_model(s_train_x, train_y, gp.state_dict(), gp_type=gp_type, mll_type=mll_type)
+
+                time_bo += time_init_bo
+                loss_value_list.append({'point': new_point, 'train_score': y_train_score, 'eval_score': y_eval_score})
+
+            else:
+                new_point = self.optimize_acquisition_function(acquisition_function, bounds, gp)
+                # new_point = new_point.squeeze() # from 2d [[11, 23, 32...]] to 1d [11, 23, 32...]
+                y_train_score = self.evaluate_true(new_point.squeeze())
+                y_eval_score = self.evaluate_true(new_point.squeeze(), dataloader_type="eval")
+
+                if verbose:
+                    print(f"*Evaluating point n {j}: \n {new_point}")
+                train_x = torch.cat((train_x, new_point), 0)
+                train_y = torch.cat((train_y, torch.tensor(y_train_score).unsqueeze(0).unsqueeze(0)), 0) ## float to tensor before unsqueeze
+                eval_y = torch.cat((eval_y, torch.tensor(y_eval_score).unsqueeze(0).unsqueeze(0)), 0)
+                gp, mll, time_init_bo = self.timed_init_model(train_x, train_y, gp.state_dict(), gp_type=gp_type, mll_type=mll_type)
+                time_bo += time_init_bo
+                loss_value_list.append({'point': new_point, 'train_score': y_train_score, 'eval_score': y_eval_score})
         return gp, mll, train_x, train_y, eval_y, time_bo # ,loss_value_list
 
 if __name__ == "__main__":
     # tasks = ["mnli", "qqp", "mrpc", "sst2", "rte", "qnli"]
-    tasks = [ "mrpc", "mnli", "qqp", "sst2", "rte", "qnli"]
+    tasks = ["mnli","mrpc", "qqp", "sst2", "rte", "qnli"]
     prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50} # dictionary to store prompt length for each task
 
-    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Time Bo", "Best point score on test"])
+    df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Eval Y", "Time Taken", "Time Bo", "Best scores on test"])
     for task in tasks:
         print(f"Task: {task}, Prompt Length: {prompt_length[task]}")
 
@@ -720,16 +783,6 @@ if __name__ == "__main__":
         gp, mll, train_x, train_y, eval_y, time_bo = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         # gp, mll, train_x, train_y = (None, None, None, None)
         # best_point_eval = [None, None, None, None, None]
-        # train_y_sorted_indices = torch.argsort(train_y.squeeze(), dim=0, descending=True)
-        # best_5_indices = train_y_sorted_indices[:5]
-        # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in best_5_indices]
-        # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in torch.argsort(train_y.squeeze(), dim=0, descending=True)[:5]]
-
-        # best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
-        # best_y = eval_y[best_eval_y_indices[0]]
-        # best_eval_y_indices = best_eval_y_indices[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001]
-        # best_x = [train_x[i].squeeze() for i in best_eval_y_indices]
-        # best_x = list(set(best_x))
 
         best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
         best_y = eval_y[best_eval_y_indices[0]]
@@ -737,7 +790,7 @@ if __name__ == "__main__":
 
         print(f"Number of candidate Best x: {list_best_x.shape[0]}")
         if list_best_x.shape[0] > 10:
-            list_best_x = list_best_x[:10]
+            list_best_x = list_best_x[:2]
         best_score_eval = eval_y[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001].squeeze()
         best_scores_test = [test.evaluate_true(x, dataloader_type="test") for x in list_best_x]
 
@@ -748,6 +801,7 @@ if __name__ == "__main__":
             "Npoint": npoint,
             "Train X": train_x,
             "Train Y": train_y,
+            "Eval Y": eval_y,
             "Time Taken": time.time() - start,
             "Time Bo": time_bo,
             "Best scores on validation": best_score_eval.squeeze().tolist(),
