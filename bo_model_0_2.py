@@ -45,7 +45,9 @@ from tqdm import tqdm
 import os
 import time
 
-
+# from botorch.models.utils.gpytorch_modules import get_matern_kernel_with_gamma_prior
+from gpytorch.priors.torch_priors import GammaPrior
+from gpytorch.kernels import MaternKernel, ScaleKernel
 
 
 
@@ -678,7 +680,17 @@ class BoPrompter(BaseTestProblem):
         if mll_type is None:
             mll_type = ExactMarginalLogLikelihood
 
-        gp = gp_type(train_x, train_y)
+        gp = gp_type(train_x, train_y, 
+                     covar_module=ScaleKernel(
+                        base_kernel=MaternKernel(
+                            nu=0.5,
+                            ard_num_dims=train_x.shape[-1],
+                            # batch_shape=batch_shape,
+                            lengthscale_prior=GammaPrior(3.0, 6.0),
+                        ),
+                        # batch_shape=batch_shape,
+                        outputscale_prior=GammaPrior(2.0, 0.15),
+                        ))
         mll = mll_type(gp.likelihood, gp)
         # gp = gp(train_x, train_y) #SingleTaskGP(train_x, train_y)
         # mll = mll(gp.likelihood, gp) #ExactMarginalLogLikelihood(gp.likelihood, gp)
@@ -697,9 +709,9 @@ class BoPrompter(BaseTestProblem):
         # if(acquisition_function == "ucb"):
         #     ucb = UpperConfidenceBound(gp, beta=0.4, maximize=True) # maximize=True for accuracy
         if acquisition_function is None:
-            acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
-        acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
-        candidate, _ = optimize_acqf(acquisition_function, bounds=bounds, q=1, num_restarts=20, raw_samples=50)
+            acquisition_function = UpperConfidenceBound(gp, beta=3, maximize=True)
+        acquisition_function = UpperConfidenceBound(gp, beta=3, maximize=True)
+        candidate, _ = optimize_acqf(acquisition_function, bounds=bounds, q=1, num_restarts=20, raw_samples=1024)
         new_point = candidate.detach()#pu().numpy()
 
         if self.args.task_name == 'mnli':
