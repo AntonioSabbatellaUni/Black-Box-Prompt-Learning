@@ -49,6 +49,9 @@ import time
 from gpytorch.priors.torch_priors import GammaPrior
 from gpytorch.kernels import MaternKernel, ScaleKernel
 
+from botorch.models.transforms import Normalize, Standardize
+
+
 
 
 
@@ -482,7 +485,7 @@ class BoPrompter(BaseTestProblem):
         # just to not throw error _bounds not defined ***
         # ten times [0, 3143]
         if args.task_name == 'mnli':
-            self._bounds = [[0, 1]] * args.prompt_length
+            self._bounds = [[-1, 1]] * args.prompt_length
         else:
             self._bounds = [[0, max_idx]] * args.prompt_length
         self.dim  = args.prompt_length
@@ -665,12 +668,41 @@ class BoPrompter(BaseTestProblem):
         torch.manual_seed(random_seed)
 
         # Expected all inputs to share the same dtype, the train_x so is transformed in a float tensor
-        train_x = torch.randint(0, self.max_idx, (n, self.dim), dtype=torch.float32) # ***tensor of tensor tensor([[2335 ...x10... 810], [...], ... ,[...]])
+        # train_x = torch.randint(0, self.max_idx, (n, self.dim), dtype=torch.float32) # ***tensor of tensor tensor([[2335 ...x10... 810], [...], ... ,[...]])
 
-        train_y = [ [self.evaluate_true(torch.tensor(x))] for x in train_x ]
-        train_y = torch.tensor(train_y) # ***tensor of tensor tensor([[0.0000], [0.0000], ... , [0.0000]])
-
-
+        # train_y = [ [self.evaluate_true(torch.tensor(x))] for x in train_x ]
+        # train_y = torch.tensor(train_y) # ***tensor of tensor tensor([[0.0000], [0.0000], ... , [0.0000]])
+        train_x = torch.tensor([[15774., 28589.,  9278., 16588.,  3356.,  7871., 26682., 15778., 12148.,
+          8451.],
+        [26088.,   166., 18612., 20034.,  3335.,  3086.,  1297., 19387., 26141.,
+         22360.],
+        [11347.,  5510., 18807., 25077., 11299.,  9699.,  8287., 25055.,  6291.,
+          2295.],
+        [ 4058., 22686.,  6413., 20191., 19707.,  2090., 27795., 19138., 21904.,
+          9850.],
+        [26086., 10698., 16023., 10803., 17327., 25421., 26463., 11954., 27543.,
+         10689.],
+        [ 4450.,   241., 19172., 20247., 11424.,  3889.,  2013.,  6042., 26358.,
+         13748.],
+        [ 1928., 21506.,  2000., 15102.,  9690.,  8619., 28029., 23732.,  6995.,
+         26161.],
+        [ 1247., 18501., 15710.,  6301., 10086., 27019., 18387.,  3921., 25014.,
+         26071.],
+        [17316., 15029.,  7082., 10723., 14376., 10080., 19447., 22890., 23059.,
+          9357.],
+        [17203., 10629.,  4027., 11621.,  7045., 11445.,  7355., 27229.,  3411.,
+         26458.]])
+        
+        train_y = torch.tensor([[0.2708],
+        [0.3333],
+        [0.2812],
+        [0.2604],
+        [0.2812],
+        [0.3021],
+        [0.3229],
+        [0.2708],
+        [0.2917],
+        [0.2917]])
         return train_x, train_y
 
 
@@ -679,7 +711,7 @@ class BoPrompter(BaseTestProblem):
             gp_type = SingleTaskGP
         if mll_type is None:
             mll_type = ExactMarginalLogLikelihood
-
+        bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
         gp = gp_type(train_x, train_y, 
                      covar_module=ScaleKernel(
                         base_kernel=MaternKernel(
@@ -690,7 +722,9 @@ class BoPrompter(BaseTestProblem):
                         ),
                         # batch_shape=batch_shape,
                         outputscale_prior=GammaPrior(2.0, 0.15),
-                        ))
+                        ),
+                    input_transform=Normalize(d=self.dim , bounds=bounds)#, bounds= torch.tensor(self._bounds))
+                    )
         mll = mll_type(gp.likelihood, gp)
         # gp = gp(train_x, train_y) #SingleTaskGP(train_x, train_y)
         # mll = mll(gp.likelihood, gp) #ExactMarginalLogLikelihood(gp.likelihood, gp)
@@ -725,10 +759,13 @@ class BoPrompter(BaseTestProblem):
         train_x, train_y = self.generate_initial_data()
         eval_y = torch.zeros((train_y.__len__(), 1), dtype=torch.float32)
 
+        bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
         mnli = True if self.args.task_name == "mnli" else False
         if mnli:
             bounds = torch.tensor([[0] * self.dim, [1] * self.dim], dtype=torch.float32)
-            s_train_x = self.scale_indices(train_x)
+
+            # s_train_x = self.scale_indices(train_x)
+            s_train_x = train_x
             gp, mll_ , time_bo = self.timed_init_model(s_train_x, train_y, gp_type=gp_type, mll_type=mll_type)
         else:
             bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
@@ -741,7 +778,10 @@ class BoPrompter(BaseTestProblem):
             if mnli:
                 new_point_2d = self.optimize_acquisition_function(acquisition_function, bounds, gp)
                 new_point = new_point_2d.squeeze() # from 2d [[11, 23, 32...]] to 1d [11, 23, 32...]
-                new_point = self.inverse_scale_indices(new_point)
+                # new_point = self.inverse_scale_indices(new_point)
+                bounds = torch.tensor([[0]*self.dim, [self.max_idx]*self.dim], dtype=torch.float32)
+                new_point = Normalize(d=self.dim, bounds=bounds).untransform(new_point).squeeze()
+                
                 new_point = torch.round(new_point).int()
                 
                 y_train_score = self.evaluate_true(new_point)
