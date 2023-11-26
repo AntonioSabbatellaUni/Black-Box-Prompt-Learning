@@ -747,10 +747,12 @@ if __name__ == "__main__":
         # filename = "results.csv"
         # path = os.path.join(os.getcwd(), filename)
         # df.to_csv(path, index=False)
+        epoch_counter = 0
         for eval_score, time_end in zip(eval_y.tolist()[10:], time_list):
+            epoch_counter += 1
             new_row = {
                 "task": task,
-                "epoch": test.epoch,
+                "epoch": epoch_counter,
                 "eval_score": eval_score[0],
                 "Best seen eval": max(eval_y.squeeze().tolist()),
                 "time taken": time_end - script_time_start
