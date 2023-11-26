@@ -1,5 +1,6 @@
 import argparse
 import logging
+import time
 import torch
 import math
 import os
@@ -25,6 +26,7 @@ from transformers.models.roberta.modeling_roberta import RobertaClassificationHe
 from torch.nn import CrossEntropyLoss
 from loss import *
 import wandb
+import pandas as pd
 logger = logging.getLogger(__name__)
 
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/text-classification/requirements.txt")
@@ -201,7 +203,7 @@ def pmi():
                 result = result + (list(line.strip('\n').split(',')))
     elif args.task_name:
         path =  "/workspaces/basic-python/Black-Box-Prompt-Learning/"
-        path = os.getcwd()
+        path = "/home/vscode/Black-Box-Prompt-Learning/"
         with open(path + "/pmi/" + args.task_name.lower() + ".txt",'r') as f:
         # with open("./pmi/" + args.task_name.lower() + ".txt",'r') as f:
             for line in f:
@@ -570,7 +572,9 @@ def main():
         "params": [prompts_probs],
         "weight_decay": args.weight_decay,
     }], lr=args.prompt_learning_rate)
-
+    
+    time_start = time.time()
+    df_res = pd.DataFrame(columns=['task' ,'epoch', 'eval_score', 'Best seen eval', 'time taken'])
     print("----Optimizing black-box prompts----")
     for epoch in range(args.num_train_epochs):
         try:
@@ -654,6 +658,13 @@ def main():
         if eval_result >= best_eval_result:
             best_eval_result = eval_result
             best_prompts_probs = prompts_probs
+
+        # *** time comparasion ***
+        new_row = {'task': args.task_name, 'epoch': epoch, 'eval_score': eval_result, 'Best seen eval': best_eval_result, 'time taken': time.time() - time_start}
+        df_res = pd.concat([df_res, pd.DataFrame([new_row])], ignore_index=True)
+        path = os.getcwd() + "/Black-Box-Prompt-Learning/"
+        df_res.to_csv( path +"BDPL_" +args.task_name + '_' + str(args.prompt_length) + '_' + str(args.prompt_learning_rate) + '_' + str(args.num_train_epochs) + '_' + str(args.seed) + '_' + str(args.prompt_search_space) + '_' + ce_loss_string + '.csv', index=False)
+
 
         if 'cuda' in str(args.device):
             torch.cuda.empty_cache()
