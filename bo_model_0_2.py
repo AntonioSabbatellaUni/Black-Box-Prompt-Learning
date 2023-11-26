@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import time
 import torch
-# (Ant) Import the function that parse the arguments
 import argparse
 from transformers import AutoTokenizer
 from datasets import load_metric
@@ -30,13 +29,9 @@ from transformers import (
 import random
 from torch.utils.data import DataLoader
 
-from botorch.models import SingleTaskGP#, FixedNoiseGP, ModelListGP
-# from gpytorch.mlls.sum_marginal_log_likelihood import SumMarginalLogLikelihood
-# ExactMarginalLogLikelihood
+from botorch.models import SingleTaskGP
 from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
 from botorch.optim import optimize_acqf
-#GaussianProcessRegressor
-#acquisition_function: UpperConfidenceBound, ExpectedImprovement, ProbabilityOfImprovement
 from botorch.acquisition import UpperConfidenceBound, ExpectedImprovement, ProbabilityOfImprovement
 from botorch.acquisition.max_value_entropy_search import qMaxValueEntropy
 import warnings
@@ -680,8 +675,9 @@ class BoPrompter(BaseTestProblem):
             print("*** Training loop ***")
         train_x, train_y = self.generate_initial_data()
         eval_y = torch.zeros((train_y.__len__(), 1), dtype=torch.float32)
-
         gp, mll_ , time_bo = self.timed_init_model(train_x, train_y, gp_type=gp_type, mll_type=mll_type)
+        
+        time_list = []
         loss_value_list = []
         for j in range(npoint):
             # acquisition_function="ucb"
@@ -698,14 +694,19 @@ class BoPrompter(BaseTestProblem):
             gp, mll, time_init_bo = self.timed_init_model(train_x, train_y, gp.state_dict(), gp_type=gp_type, mll_type=mll_type)
             time_bo += time_init_bo
             loss_value_list.append({'point': new_point, 'train_score': y_train_score, 'eval_score': y_eval_score})
-        return gp, mll, train_x, train_y, eval_y, time_bo # ,loss_value_list
+            time_list.append(time.time())
+        return gp, mll, train_x, train_y, eval_y, time_bo, time_list
 
 if __name__ == "__main__":
     # tasks = ["mnli", "qqp", "mrpc", "sst2", "rte", "qnli"]
-    tasks = [ "mrpc", "mnli", "qqp", "sst2", "rte", "qnli"]
+    # tasks = [ "mrpc", "mnli", "qqp", "sst2", "rte", "qnli"]
+    tasks = ["mrpc"]
+
     prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50} # dictionary to store prompt length for each task
 
     df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Time Bo", "Best point score on test"])
+    df_res = pd.DataFrame(columns=['task' ,'epoch', 'eval_score', 'Best seen eval', 'time taken'])
+    script_time_start = time.time()
     for task in tasks:
         print(f"Task: {task}, Prompt Length: {prompt_length[task]}")
 
@@ -717,19 +718,7 @@ if __name__ == "__main__":
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
         npoint = 3
-        gp, mll, train_x, train_y, eval_y, time_bo = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
-        # gp, mll, train_x, train_y = (None, None, None, None)
-        # best_point_eval = [None, None, None, None, None]
-        # train_y_sorted_indices = torch.argsort(train_y.squeeze(), dim=0, descending=True)
-        # best_5_indices = train_y_sorted_indices[:5]
-        # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in best_5_indices]
-        # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in torch.argsort(train_y.squeeze(), dim=0, descending=True)[:5]]
-
-        # best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
-        # best_y = eval_y[best_eval_y_indices[0]]
-        # best_eval_y_indices = best_eval_y_indices[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001]
-        # best_x = [train_x[i].squeeze() for i in best_eval_y_indices]
-        # best_x = list(set(best_x))
+        gp, mll, train_x, train_y, eval_y, time_bo, time_list = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
 
         best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
         best_y = eval_y[best_eval_y_indices[0]]
@@ -737,32 +726,37 @@ if __name__ == "__main__":
 
         print(f"Number of candidate Best x: {list_best_x.shape[0]}")
         if list_best_x.shape[0] > 10:
-            list_best_x = list_best_x[:10]
+            list_best_x = list_best_x[:2]
         best_score_eval = eval_y[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001].squeeze()
-        best_scores_test = [test.evaluate_true(x, dataloader_type="test") for x in list_best_x]
+        # best_scores_test = [test.evaluate_true(x, dataloader_type="test") for x in list_best_x]
 
-        new_row = {
-            "Task": task,
-            "GP Type": gp_type,
-            "Mll Type": mll_type,
-            "Npoint": npoint,
-            "Train X": train_x,
-            "Train Y": train_y,
-            "Time Taken": time.time() - start,
-            "Time Bo": time_bo,
-            "Best scores on validation": best_score_eval.squeeze().tolist(),
-            "Best scores on test": best_scores_test
-        }
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        # save the file in each iteration for prevent losing data in case of an error 
-        filename = "results.csv"
-        path = os.path.join(os.getcwd(), filename)
-        df.to_csv(path, index=False)
+        # new_row = {
+        #     "Task": task,
+        #     "GP Type": gp_type,
+        #     "Mll Type": mll_type,
+        #     "Npoint": npoint,
+        #     "Train X": train_x,
+        #     "Train Y": train_y,
+        #     "Time Taken": time.time() - start,
+        #     "Time Bo": time_bo,
+        #     "Best scores on validation": best_score_eval.squeeze().tolist(),
+        #     "Best scores on test": best_scores_test
+        # }
+        # df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        # # save the file in each iteration for prevent losing data in case of an error 
+        # filename = "results.csv"
+        # path = os.path.join(os.getcwd(), filename)
+        # df.to_csv(path, index=False)
+        for eval_score, time_end in zip(eval_y.tolist()[10:], time_list):
+            new_row = {
+                "task": task,
+                "epoch": test.epoch,
+                "eval_score": eval_score[0],
+                "Best seen eval": max(eval_y.squeeze().tolist()),
+                "time taken": time_end - script_time_start
+            }
+            df_res = pd.concat([df_res, pd.DataFrame([new_row])], ignore_index=True)
+        path = os.getcwd() + "/Black-Box-Prompt-Learning/"
+        df_res.to_csv( path +"BO_" + task + '_' + str(prompt_length[task]) + '_'+ str(npoint) + '_' + str(selected_args['seed']) +'.csv', index=False)
 
     print(df.head())
-    df = pd.read_csv(path +"results.csv")
-    print(df.head())
-
-
-#dim 5 50 iter 100
-# grafico minimo
