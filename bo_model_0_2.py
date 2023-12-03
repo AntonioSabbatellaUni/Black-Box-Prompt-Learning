@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import time
 import torch
-# (Ant) Import the function that parse the arguments
 import argparse
 from transformers import AutoTokenizer
 from datasets import load_metric
@@ -30,15 +29,11 @@ from transformers import (
 import random
 from torch.utils.data import DataLoader
 
-from botorch.models import SingleTaskGP#, FixedNoiseGP, ModelListGP
-# from gpytorch.mlls.sum_marginal_log_likelihood import SumMarginalLogLikelihood
-# ExactMarginalLogLikelihood
+from botorch.models import SingleTaskGP
 from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
 from botorch.optim import optimize_acqf
-#GaussianProcessRegressor
-#acquisition_function: UpperConfidenceBound, ExpectedImprovement, ProbabilityOfImprovement
-from botorch.acquisition import UpperConfidenceBound, ExpectedImprovement, ProbabilityOfImprovement
-from botorch.acquisition.max_value_entropy_search import qMaxValueEntropy
+from botorch.acquisition import UpperConfidenceBound#, ExpectedImprovement, ProbabilityOfImprovement
+# from botorch.acquisition.max_value_entropy_search import qMaxValueEntropy
 import warnings
 from tqdm import tqdm
 from tqdm import tqdm
@@ -436,10 +431,6 @@ class BoPrompter(BaseTestProblem):
             global train_dataset_example # for debugging
             train_dataset_example = train_dataset
 
-        # Log a few random samples from the training set:
-        # for index in random.sample(range(len(train_dataset)), 3):
-            # logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
-
         # DataLoaders creation:
         if args.pad_to_max_length:
             data_collator = default_data_collator
@@ -718,26 +709,13 @@ if __name__ == "__main__":
         mll_type = ExactMarginalLogLikelihood
         npoint = 3
         gp, mll, train_x, train_y, eval_y, time_bo = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
-        # gp, mll, train_x, train_y = (None, None, None, None)
-        # best_point_eval = [None, None, None, None, None]
-        # train_y_sorted_indices = torch.argsort(train_y.squeeze(), dim=0, descending=True)
-        # best_5_indices = train_y_sorted_indices[:5]
-        # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in best_5_indices]
-        # best_point_eval = [test.evaluate_true(train_x[i].squeeze(), train=False) for i in torch.argsort(train_y.squeeze(), dim=0, descending=True)[:5]]
-
-        # best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
-        # best_y = eval_y[best_eval_y_indices[0]]
-        # best_eval_y_indices = best_eval_y_indices[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001]
-        # best_x = [train_x[i].squeeze() for i in best_eval_y_indices]
-        # best_x = list(set(best_x))
-
         best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
         best_y = eval_y[best_eval_y_indices[0]]
         list_best_x = train_x[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001]
 
         print(f"Number of candidate Best x: {list_best_x.shape[0]}")
         if list_best_x.shape[0] > 10:
-            list_best_x = list_best_x[:10]
+            list_best_x = list_best_x[:3]
         best_score_eval = eval_y[torch.abs(best_y.squeeze() -eval_y.squeeze()) < 0.001].squeeze()
         best_scores_test = [test.evaluate_true(x, dataloader_type="test") for x in list_best_x]
 
@@ -748,13 +726,13 @@ if __name__ == "__main__":
             "Npoint": npoint,
             "Train X": train_x,
             "Train Y": train_y,
+            "Eval Y": eval_y,
             "Time Taken": time.time() - start,
             "Time Bo": time_bo,
             "Best scores on validation": best_score_eval.squeeze().tolist(),
             "Best scores on test": best_scores_test
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        # save the file in each iteration for prevent losing data in case of an error 
         filename = "results.csv"
         path = os.path.join(os.getcwd(), filename)
         df.to_csv(path, index=False)
@@ -762,7 +740,3 @@ if __name__ == "__main__":
     print(df.head())
     df = pd.read_csv(path +"results.csv")
     print(df.head())
-
-
-#dim 5 50 iter 100
-# grafico minimo
