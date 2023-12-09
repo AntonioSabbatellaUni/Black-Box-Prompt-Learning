@@ -30,6 +30,12 @@ import random
 from torch.utils.data import DataLoader
 
 from botorch.models import SingleTaskGP
+from gpytorch.kernels import ScaleKernel
+# from gpytorch.kernels.matern_kernel import MaternKernel
+from SemanticMatern.SemanticMatexKernel import SemanticMaternKernel as MaternKernel
+from SemanticMatern.SentenceSimilarityCalculator import SentenceSimilarityCalculator
+from gpytorch.priors import GammaPrior
+
 from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
 from botorch.optim import optimize_acqf
 from botorch.acquisition import UpperConfidenceBound#, ExpectedImprovement, ProbabilityOfImprovement
@@ -39,6 +45,7 @@ from tqdm import tqdm
 from tqdm import tqdm
 import os
 import time
+
 
 
 
@@ -592,6 +599,7 @@ class BoPrompter(BaseTestProblem):
             predictions=accelerator.gather(predictions),
             references=accelerator.gather(converted_target),
             )
+            break
 
         # Compute overall metrics
         if args.file_name in DOMAIN_DATASET:
@@ -618,7 +626,7 @@ class BoPrompter(BaseTestProblem):
 
         return eval_result
     
-    def generate_initial_data(self, n=10):
+    def generate_initial_data(self, n=3):
         # random_seed = 0
         random_seed = 42
         print("Random seed: ", random_seed)
@@ -636,11 +644,25 @@ class BoPrompter(BaseTestProblem):
 
     def init_model(self ,train_x, train_y, state_dict=None, gp_type=None, mll_type=None):
         if gp_type is None:
-            gp_type = SingleTaskGP
-        if mll_type is None:
-            mll_type = ExactMarginalLogLikelihood
+            pass
 
-        gp = gp_type(train_x, train_y)
+        if mll_type is None:
+            mll_type = ExactMarginalLogLikelihood()
+
+        gp = gp_type(train_x, train_y, 
+                     covar_module=ScaleKernel(
+                        base_kernel=MaternKernel(
+                            embeddingModel=SentenceSimilarityCalculator(),
+                            tokenizer=self.tokenizer,
+                            nu=2.5,
+                            ard_num_dims=train_x.shape[-1],
+                            # batch_shape=batch_shape,
+                            lengthscale_prior=GammaPrior(3.0, 6.0),
+                            
+                        ),
+                        # batch_shape=batch_shape,
+                        outputscale_prior=GammaPrior(2.0, 0.15),
+                        ))
         mll = mll_type(gp.likelihood, gp)
         # gp = gp(train_x, train_y) #SingleTaskGP(train_x, train_y)
         # mll = mll(gp.likelihood, gp) #ExactMarginalLogLikelihood(gp.likelihood, gp)
@@ -662,6 +684,7 @@ class BoPrompter(BaseTestProblem):
             acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
         acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
         candidate, _ = optimize_acqf(acquisition_function, bounds=bounds, q=1, num_restarts=20, raw_samples=50)
+        #RuntimeError: One of the differentiated Tensors appears to not have been used in the graph. Set allow_unused=True if this is the desired behavior.
         new_point = candidate.detach()#pu().numpy()
         return torch.round(new_point).int() # dafault is 0
     
