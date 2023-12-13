@@ -96,15 +96,9 @@ class SemanticMaternKernel(Kernel):
         x_tensor = torch.empty(x_3.size(0), x_3.size(1), 768)
         for i in range(x_3.size(0)):
             for j in range(x_3.size(1)):
-                # x_3[i][j] = self.embModel(x_3[i][j])
                 text = self.tokenizer.decode(torch.round(x_3[i][j]).int())
-                # if i < 2:
-                    # print("x_3[i][j]", x_3[i][j].size())
-                    # # print("x_3[i][j]", x_3[i][j][:10])
-                    # print("x_3[i][j] (rounded int)", torch.round(x_3[i][j]).int())
-                    # print("x_3[i][j] (de-tokenized)", text)
                 x_tensor[i][j] = self.embeddingModel.encode(text)
-        
+                
         if x.dim() == 2:
             x_tensor = x_tensor.squeeze(0)
         if x.shape[:-1] != x_tensor.shape[:-1]:
@@ -124,29 +118,18 @@ class SemanticMaternKernel(Kernel):
             or params.get("last_dim_is_batch", False)
             or trace_mode.on()
         ):
-            # x1 ha dimensione 50 x 1 x 50
-            # Rappresenta 50 vettori di feature (uno per ogni punto dati), ognuno di dimensione 50
-            # x2 ha dimensione 50 x 4 x 50
-            # Rappresenta 50 gruppi di 4 vettori di feature (200 vettori in totale), ognuno di dimensione 50
-            # Quindi sto considerando la similarità tra:
-            # 50 singoli punti dati (x1)
-            # 200 punti dati totali raggruppati in 50 gruppi di 4 (x2)
 
-            print("forward My ***x1", x1.size())
-            print("forward My***x2", x2.size())
-
-
+            # print("forward My ***x1", x1.size())
+            # print("forward My***x2", x2.size())
             # print(self.embed(x1))
-        
             x1e = self.embed(x1)
             x2e = self.embed(x2)
 
             mean = x1e.reshape(-1, x1e.size(-1)).mean(0)[(None,) * (x1e.dim() - 1)]
-
             lengthscale = self.lengthscale.new_full((self.lengthscale.shape[0:-1][0], x1e.shape[-1]), float(self.lengthscale[0, 1]))
 
-            x1_ = (x1e - mean).div(lengthscale)#.div(self.lengthscale)
-            x2_ = (x2e - mean).div(lengthscale)#.div(self.lengthscale)
+            x1_ = (x1e - mean).div(lengthscale)
+            x2_ = (x2e - mean).div(lengthscale)
 
             distance = self.covar_dist(x1_, x2_, diag=diag, **params)
             exp_component = torch.exp(-math.sqrt(self.nu * 2) * distance)
@@ -157,8 +140,7 @@ class SemanticMaternKernel(Kernel):
                 constant_component = (math.sqrt(3) * distance).add(1)
             elif self.nu == 2.5:
                 constant_component = (math.sqrt(5) * distance).add(1).add(5.0 / 3.0 * distance**2)
-            
-            print("forward My ***constant_component", constant_component.size())
+            # print("forward My ***constant_component", constant_component.size())
             return constant_component * exp_component
         return MaternCovariance.apply(
             x1e, x2e, self.lengthscale, self.nu, lambda x1e, x2e: self.covar_dist(x1e, x2e, **params)

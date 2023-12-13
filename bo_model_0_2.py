@@ -34,7 +34,9 @@ from gpytorch.kernels import ScaleKernel
 # from gpytorch.kernels.matern_kernel import MaternKernel
 from SemanticMatern.SemanticMatexKernel import SemanticMaternKernel as MaternKernel
 from SemanticMatern.SentenceSimilarityCalculator import SentenceSimilarityCalculator
+from SemanticMatern.AcquisitionOptimizer import AcquisitionOptimizer
 from gpytorch.priors import GammaPrior
+
 
 from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
 from botorch.optim import optimize_acqf
@@ -599,7 +601,7 @@ class BoPrompter(BaseTestProblem):
             predictions=accelerator.gather(predictions),
             references=accelerator.gather(converted_target),
             )
-            break
+            
 
         # Compute overall metrics
         if args.file_name in DOMAIN_DATASET:
@@ -678,15 +680,10 @@ class BoPrompter(BaseTestProblem):
         return gp, mll, time_taken
 
     def optimize_acquisition_function(self, acquisition_function, bounds, gp, num_restarts=10, raw_samples=100):
-        # if(acquisition_function == "ucb"):
-        #     ucb = UpperConfidenceBound(gp, beta=0.4, maximize=True) # maximize=True for accuracy
-        if acquisition_function is None:
-            acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
         acquisition_function = UpperConfidenceBound(gp, beta=0.4, maximize=True)
-        candidate, _ = optimize_acqf(acquisition_function, bounds=bounds, q=1, num_restarts=20, raw_samples=50)
-        #RuntimeError: One of the differentiated Tensors appears to not have been used in the graph. Set allow_unused=True if this is the desired behavior.
-        new_point = candidate.detach()#pu().numpy()
-        return torch.round(new_point).int() # dafault is 0
+        candidate = AcquisitionOptimizer(acquisition_function, bounds=bounds.tolist(), q=1, sigma0=0.2, popsize=49).optimize()
+        new_point = candidate.detach()
+        return torch.round(new_point).int()
     
     def train_loop(self, verbose = True, npoint= 2, gp_type=None, mll_type=None, acquisition_function=None):
         bounds = torch.tensor([[0] * self.dim, [self.max_idx] * self.dim], dtype=torch.float32)
@@ -700,7 +697,7 @@ class BoPrompter(BaseTestProblem):
         for j in range(npoint):
             # acquisition_function="ucb"
             new_point = self.optimize_acquisition_function(acquisition_function, bounds, gp)
-            # new_point = new_point.squeeze() # from 2d [[11, 23, 32...]] to 1d [11, 23, 32...]
+            
             y_train_score = self.evaluate_true(new_point.squeeze())
             y_eval_score = self.evaluate_true(new_point.squeeze(), dataloader_type="eval")
 
