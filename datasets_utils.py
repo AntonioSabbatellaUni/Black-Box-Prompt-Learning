@@ -47,7 +47,7 @@ def create_dataset(path_file_row: str)-> DatasetDict:
 
     return dataset
 
-# Usage
-path_file_row = r'/home/vscode/Black-Box-Prompt-Learning/dataset/sentiment.json'
-dataset = create_dataset(path_file_row)
-print(dataset)
+# # Usage
+# path_file_row = r'/home/vscode/Black-Box-Prompt-Learning/dataset/sentiment.json'
+# dataset = create_dataset(path_file_row)
+# print(dataset)

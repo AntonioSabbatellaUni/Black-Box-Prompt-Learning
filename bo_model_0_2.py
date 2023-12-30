@@ -631,7 +631,7 @@ class BoPrompter(BaseTestProblem):
 
         return eval_result
     
-    def generate_initial_data(self, n=1):
+    def generate_initial_data(self, n=10):
         # random_seed = 0
         random_seed = 42
         print("Random seed: ", random_seed)
