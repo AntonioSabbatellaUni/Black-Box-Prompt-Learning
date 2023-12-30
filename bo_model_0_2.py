@@ -29,6 +29,8 @@ from transformers import (
 import random
 from torch.utils.data import DataLoader
 
+from datasets_utils import create_dataset
+
 from botorch.models import SingleTaskGP
 from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
 from botorch.optim import optimize_acqf
@@ -62,7 +64,8 @@ LABEL2ID_CONFIG = {
     "imdb": {" terrible": 0, " great": 1},
     "cr": {" terrible": 0, " great": 1},
     "mr": {" terrible": 0, " great": 1},
-    "mpqa": {" terrible": 0, " great": 1}
+    "mpqa": {" terrible": 0, " great": 1},
+    "sentiment": {" negative": 0, " positive": 1},
 }
 task_to_keys = {
     "cola": ("sentence", None),
@@ -74,6 +77,7 @@ task_to_keys = {
     "sst2": ("sentence", None),
     "stsb": ("sentence1", "sentence2"),
     "wnli": ("sentence1", "sentence2"),
+    "sentiment": ("sentence", None),
 }
 
 TEMPLATE_CONFIG = {
@@ -91,6 +95,7 @@ TEMPLATE_CONFIG = {
     "HP": " It is [MASK].",
     "imdb": "It was [MASK].",
     "cr": "It was [MASK].",
+    "sentiment": "It was [MASK].",
 }
 
 LABEL_CONVERT = {
@@ -106,8 +111,10 @@ LABEL_CONVERT = {
     'SE': {'COMPARE': ' comparison', 'CONJUNCTION': ' conjunction', 'EVALUATE-FOR': ' evaluation', 'FEATURE-OF': ' feature', 'HYPONYM-OF': ' hyponym', 'PART-OF': ' part', 'USED-FOR': ' function'},
     'RCT': {'BACKGROUND': ' background', 'CONCLUSIONS': ' conclusion', 'METHODS': ' method', 'OBJECTIVE': ' objective', 'RESULTS': ' result'},
     'HP': {False: ' unhelpful', True: ' helpful'},
+    'sentiment': {0: ' negative', 1: ' positive'},
 }
 DOMAIN_DATASET = ['CI', 'SE', 'RCT', 'HP']
+EXTERNAL_DATASET = ['sentiment']
 
 # (Ant) Function called by pmi() to parse the arguments
 def parse_args(args_selected=None):
@@ -197,7 +204,11 @@ class BoPrompter(BaseTestProblem):
         # download the dataset.
         if args.task_name is not None:
             if args.task_name in task_to_keys.keys():
-                raw_datasets = load_dataset("glue", args.task_name)
+                if args.task_name in EXTERNAL_DATASET: # only sentiment
+                    path_file_row = os.path.join(os.path.dirname(__file__), "dataset", args.task_name.lower() + ".json")
+                    raw_datasets = create_dataset(path_file_row)
+                else:
+                    raw_datasets = load_dataset("glue", args.task_name)
             else:
                 raise(NotImplementedError)
         else:
@@ -451,14 +462,14 @@ class BoPrompter(BaseTestProblem):
 
         # ***** END OF DATA LOADING snippet *****
 
-        if args.task_name is not None:
+        if args.task_name is not None and args.task_name not in EXTERNAL_DATASET:
             metric = load_metric("glue", args.task_name) #, experiment_id=args.experiment_id)
         elif args.file_name in DOMAIN_DATASET:
             metric = load_metric('f1', args.experiment_id)
         else:
             metric = load_metric('accuracy', args.experiment_id)
 
-        self.metric = load_metric("glue", args.task_name)
+        self.metric = metric
         self.logger = logging.getLogger(__name__)
 
         # needed in evaluate_true, not sure if this is the correct way to get epoch 
@@ -607,7 +618,9 @@ class BoPrompter(BaseTestProblem):
         # Extract key metric  
         if args.task_name == 'cola':
             key = 'matthews_correlation'
-        elif args.task_name in ['mnli', 'sst2', 'wnli', 'rte', 'qnli'] or args.file_name in ['MR', 'CR']:
+        elif (args.task_name in ['mnli', 'sst2', 'wnli', 'rte', 'qnli'] 
+                        or args.file_name in ['MR', 'CR'] 
+                        or args.task_name in EXTERNAL_DATASET):
             key = 'accuracy'
         else:
             key = 'f1'
@@ -618,7 +631,7 @@ class BoPrompter(BaseTestProblem):
 
         return eval_result
     
-    def generate_initial_data(self, n=10):
+    def generate_initial_data(self, n=1):
         # random_seed = 0
         random_seed = 42
         print("Random seed: ", random_seed)
@@ -693,8 +706,9 @@ class BoPrompter(BaseTestProblem):
 
 if __name__ == "__main__":
     # tasks = ["mnli", "qqp", "mrpc", "sst2", "rte", "qnli"]
-    tasks = [ "mrpc", "mnli", "qqp", "sst2", "rte", "qnli"]
-    prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50} # dictionary to store prompt length for each task
+    # tasks = [ "mrpc", "mnli", "qqp", "sst2", "rte", "qnli"]
+    tasks = [ "sentiment"]
+    prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50, "sentiment" : 10} # dictionary to store prompt length for each task
 
     df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Time Bo", "Best point score on test"])
     for task in tasks:
@@ -707,7 +721,7 @@ if __name__ == "__main__":
         warnings.filterwarnings("ignore")
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
-        npoint = 3
+        npoint = 10
         gp, mll, train_x, train_y, eval_y, time_bo = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
         best_y = eval_y[best_eval_y_indices[0]]
