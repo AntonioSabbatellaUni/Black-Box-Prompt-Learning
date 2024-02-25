@@ -69,6 +69,8 @@ LABEL2ID_CONFIG = {
     "mr": {" terrible": 0, " great": 1},
     "mpqa": {" terrible": 0, " great": 1},
     "sentiment": {" negative": 0, " positive": 1},
+    "sentence_similarity": {"0 - definitely not": 0, "1 - probably not": 1, "2 - possibly": 2, "3 - probably": 3, "4 - almost perfectly": 4, "5 - perfectly": 5},
+    "word_in_context": {"not the same": 0, "same": 1}#, "no": 0, "yes": 1, "true": 1, "false": 0}
 }
 task_to_keys = {
     "cola": ("sentence", None),
@@ -81,6 +83,8 @@ task_to_keys = {
     "stsb": ("sentence1", "sentence2"),
     "wnli": ("sentence1", "sentence2"),
     "sentiment": ("sentence", None),
+    "sentence_similarity": ("sentence", None),
+    "word_in_context": ("sentence", None),
 }
 
 TEMPLATE_CONFIG = {
@@ -99,6 +103,8 @@ TEMPLATE_CONFIG = {
     "imdb": "It was [MASK].",
     "cr": "It was [MASK].",
     "sentiment": "It was [MASK].",
+    "sentence_similarity": "Similarity score: [MASK].",
+    "word_in_context": "Meaning is: [MASK].",
 }
 
 LABEL_CONVERT = {
@@ -115,9 +121,11 @@ LABEL_CONVERT = {
     'RCT': {'BACKGROUND': ' background', 'CONCLUSIONS': ' conclusion', 'METHODS': ' method', 'OBJECTIVE': ' objective', 'RESULTS': ' result'},
     'HP': {False: ' unhelpful', True: ' helpful'},
     'sentiment': {0: ' negative', 1: ' positive'},
+    'sentence_similarity': {0: '0 - definitely not', 1: '1 - probably not', 2: '2 - possibly', 3: '3 - probably', 4: '4 - almost perfectly', 5: '5 - perfectly'},
+    'word_in_context': {0: 'not the same', 1: 'same'}
 }
 DOMAIN_DATASET = ['CI', 'SE', 'RCT', 'HP']
-EXTERNAL_DATASET = ['sentiment']
+EXTERNAL_DATASET = ['sentiment', 'sentence_similarity', 'word_in_context']
 
 global llm_logger
 llm_logger = {}
@@ -342,7 +350,7 @@ class BoPrompter(BaseTestProblem):
                 for tuple_ in list(zip(examples[sentence1_key], template)):
                     sent_1 = tokenizer.tokenize(tuple_[0])[:400]
                     new_sent_1 = tokenizer.convert_tokens_to_string(sent_1)
-                    texts.append(new_sent_1 + tuple_[1])
+                    texts.append(new_sent_1 +" "+ tuple_[1])
             # result = tokenizer(texts, padding=padding, max_length=args.max_length, truncation=True)
             result = {"input_ids": []}
             for text in texts:
@@ -529,8 +537,6 @@ class BoPrompter(BaseTestProblem):
 
 
     def evaluate_true(self, X, dataloader_type="train"): # funzione cge valuta | X tensor "list of list" token di input  | a tensor list of scores for each element in X
-        
-        #(Ant) In this case X the output of the Algorithm, not the direct prediction ( need argmax )
 
         # Get predicted prompt indices by taking argmax of probabilities
         # prompts_discrete_indices = X.argmax(1) 
@@ -539,7 +545,7 @@ class BoPrompter(BaseTestProblem):
         model = self.model
         tokenizer = self.tokenizer
         metric = self.metric
-
+        max_length = {'train': 25, 'test': 300, 'eval': 25}
         epoch = self.epoch # NOT SURE IF THIS IS CORRECT WAY TO GET EPOCH, CHECK
 
         ngram_list = self.ngram_list
@@ -551,6 +557,7 @@ class BoPrompter(BaseTestProblem):
 
         prompt_length = args.prompt_length
         config = self.config
+
 
         # If using n-gram prompts, convert indices to n-gram sequences
         if args.use_ngram:
@@ -564,6 +571,7 @@ class BoPrompter(BaseTestProblem):
         count_batch = 0
         if dataloader_type == "train":
             data_loader = self.train_dataloader
+
         elif dataloader_type == "test":
             print("dataloader: test")
             data_loader = self.test_dataloader
@@ -572,6 +580,8 @@ class BoPrompter(BaseTestProblem):
             data_loader = self.eval_dataloader
         
         test_batches = data_loader.dataset
+        if len(test_batches) > max_length[dataloader_type]:
+            test_batches = test_batches.select(range(0, max_length[dataloader_type]))
         row_response = []
         for step in range(len(test_batches)):
             count_batch += 1
@@ -624,8 +634,17 @@ class BoPrompter(BaseTestProblem):
         global llm_logger
         if args.task_name not in llm_logger:
             llm_logger[args.task_name] = []
-        llm_logger[args.task_name].extend(row_response)
+        current_eval = len(llm_logger[args.task_name]) + 1
+        
+        llm_logger[args.task_name].extend([{
+            "current_eval" : current_eval,
+            "chat_completion_responses" : row_response,
+            "score" : eval_result,
+            "prompt" : prompts_string,
+            "total_tokens" : sum([c.usage.total_tokens for c in row_response])
 
+
+        }])
         # Get the current date and time
         date_string = datetime.datetime.now().strftime("%m%d")
         # Define the file name
@@ -720,9 +739,10 @@ class BoPrompter(BaseTestProblem):
 
 if __name__ == "__main__":
     # tasks = ["mnli", "qqp", "mrpc", "sst2", "rte", "qnli"]
-    # tasks = [ "mrpc", "mnli", "qqp", "sst2", "rte", "qnli"]
-    tasks = [ "sentiment"]
-    prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50, "sentiment" : 10} # dictionary to store prompt length for each task
+    # tasks = ['sentiment', 'sentence_similarity', 'word_in_context']
+    tasks = [ "sentiment"]#, "word_in_context", "sentiment"]
+    prompt_length = {"mnli": 10, "qqp": 25, "sst2": 50, "mrpc": 50, "cola": 50, "qnli": 50, "rte": 50, "ci": 50, "se": 50, "rct": 50, "hp": 50, 
+                     "sentiment" : 10, "sentence_similarity": 10, "word_in_context": 10} # dictionary to store prompt length for each task
     df = pd.DataFrame(columns=["Task", "GP Type", "Mll Type", "Npoint", "Train X", "Train Y", "Time Taken", "Time Bo", "Best point score on test"])
     for task in tasks:
         print(f"Task: {task}, Prompt Length: {prompt_length[task]}")
@@ -734,7 +754,7 @@ if __name__ == "__main__":
         warnings.filterwarnings("ignore")
         gp_type = SingleTaskGP
         mll_type = ExactMarginalLogLikelihood
-        npoint = 50
+        npoint = 100
         gp, mll, train_x, train_y, eval_y, time_bo = test.train_loop(verbose=True, npoint=npoint, gp_type=gp_type, mll_type=mll_type, acquisition_function=None)
         best_eval_y_indices = torch.argsort(eval_y.squeeze(), dim=0, descending=True)
         best_y = eval_y[best_eval_y_indices[0]]
@@ -761,7 +781,9 @@ if __name__ == "__main__":
             "LLM_log": llm_logger[task]
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        filename = "results.csv"
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
+        task_names = "_".join(tasks)
+        filename = f"results_GPT_{current_date}_{task_names}.csv"
         path = os.path.join(os.getcwd(), filename)
         df.to_csv(path, index=False)
 
