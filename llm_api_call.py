@@ -15,7 +15,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
 # client = OpenAI(api_key='sk-h..' )
-# client = OpenAI(api_key="not-needed", base_url="https://0ee6-81-56-46-24.ngrok-free.app/v1")
+#client = OpenAI(api_key="not-needed", base_url="https://2392-81-56-46-24.ngrok-free.app/v1")
 
 
 
@@ -101,8 +101,13 @@ def chat_LLM(input_text: str, LABEL2ID_CONFIG: dict) -> Dict[str, any]:
     return {"label": LABEL2ID_CONFIG[response], "response": chat_completion}
   
   # Check if the response is a substring of a 'label': 'label' in the response
-  if response.replace("'", "").replace("label: ", "").replace('"', "") in LABEL2ID_CONFIG:
-    return {"label": LABEL2ID_CONFIG[response.replace("'label': ", "").replace("'", "").replace('"', "")], "response": chat_completion}
+  if response.replace("'", "").replace('"', "").replace("label: ", "").replace('"', "") in LABEL2ID_CONFIG:
+    return {"label": LABEL2ID_CONFIG[response.replace("'", "")
+                                     .replace('"', "")
+                                     .replace("'label': ", "")
+                                     .replace("label: ", "")
+                                     .replace("'", "")
+                                     ], "response": chat_completion}
   
   # Remove punctuation and non-alphanumeric characters
   response = re.sub(r'[^a-zA-Z0-9 -]', ' ', response)

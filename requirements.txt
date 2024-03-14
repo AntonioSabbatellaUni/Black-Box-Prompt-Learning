@@ -6,4 +6,7 @@ botorch
 gpytorch
 scipy
 accelerate
+pymoo
+openai
+python-dotenv
 # xformers # memory_efficient_attention to accelerate training
