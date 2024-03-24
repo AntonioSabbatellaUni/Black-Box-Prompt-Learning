@@ -14,8 +14,8 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
-# client = OpenAI(api_key='sk-h..' )
-#client = OpenAI(api_key="not-needed", base_url="https://2392-81-56-46-24.ngrok-free.app/v1")
+client = OpenAI(api_key='sk-h..' )
+client = OpenAI(api_key="not-needed", base_url="https://3ba9-81-56-46-24.ngrok-free.app/v1")
 
 
 
@@ -43,10 +43,11 @@ def chat(system: str, user_message: str, max_tokens: int = 5, temperature: float
     chat_completion = client.chat.completions.create(model="gpt-3.5-turbo", messages=messages, 
                                             max_tokens=max_tokens, temperature=temperature)
     response= chat_completion.choices[0].message.content
-  except:
+  except Exception as e:
+    print(e)
     response = "Error / Exception during chat completion, input text is: " + user_message + "system is: " + system
     print("[LOG] Error / Exception during chat completion, input text is: ", user_message)
-    chat_completion = ChatCompletion()
+    chat_completion = None
 
 
   current_time = datetime.datetime.now().strftime("%m%d_%H%M%S")
